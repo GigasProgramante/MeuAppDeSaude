@@ -2,25 +2,27 @@
 
 Aplicativo móvel e web *offline-first* desenvolvido em **React Native + Expo + TypeScript** como **projeto de curricularização da extensão** do curso de Engenharia de Software da **Universidade do Contestado (UNC)** em parceria com os cursos da área da Saúde (**Psicologia, Enfermagem, Farmácia, Educação Física, Fisioterapia, Medicina e Odontologia**), para apoiar pacientes no acompanhamento diário de saúde e divulgar os serviços prestados pelas Clínicas-Escola da UNC à comunidade.
 
----
-
-## 🚀 Tecnologias e Arquitetura
-
-- **React Native (`0.81`) & Expo (SDK `54`)**: Suporte unificado para Android, iOS e Expo Web.
-- **TypeScript (`strict: true`)**: Tipagem estática ponta a ponta em [`src/types/index.ts`](src/types/index.ts).
-- **Zustand + AsyncStorage (`src/store/useStore.ts`)**: Estado global persistente com funcionamento imediato offline e migração segura de chaves legadas.
-- **Supabase (`@supabase/supabase-js`)**: Camada cloud preparada em [`src/services/supabase.ts`](src/services/supabase.ts), [`src/services/db.ts`](src/services/db.ts) e [`supabase/schema.sql`](supabase/schema.sql) com PostgreSQL, Auth, Storage (`avatars`), Realtime e Row Level Security (RLS).
-- **React Navigation (Native Stack)**: Fluxo de navegação modular em [`src/navigation/AppNavigator.tsx`](src/navigation/AppNavigator.tsx) com verificação automática de sessão (`getSession` + `onAuthStateChange`).
-- **Acessibilidade & Visualização (`src/components/ClinicaCharts.tsx`)**: Gráficos clínicos leves multiplataforma e interface revisada para acessibilidade de idosos (`RNF01`: fontes ampliadas, alvos de toque `>= 44px` e alto contraste).
-- **Recursos Nativos Expo**: `expo-notifications`, `expo-location` (GPS), `expo-print` & `expo-sharing` (PDF), `expo-image-picker`, `expo-auth-session` (Google OAuth) e `expo-web-browser`.
+> **Aviso institucional:** O aplicativo é uma ferramenta de autocuidado e apoio educativo em saúde. Ele não realiza diagnósticos, não substitui prontuário oficial médico e não substitui atendimento presencial nem serviços de emergência.
 
 ---
 
-## ⚙️ Como Instalar e Rodar
+## Tecnologias e Arquitetura
+
+- **React Native (`0.81.5`) & Expo (SDK `54`) + React (`19.1.0`):** Suporte multiplataforma para Android, iOS e Expo Web.
+- **TypeScript (`strict: true`):** Tipagem estática ponta a ponta em [`src/types/index.ts`](src/types/index.ts).
+- **Design System Interno & Acessibilidade:** Tokens visuais em [`src/theme/tokens.ts`](src/theme/tokens.ts) e 12 componentes reutilizáveis em [`src/components/ui/`](src/components/ui/index.ts) (`ScreenShell`, `AppCard`, `AppButton`, `AppInput`, `ChipSelector`, `SegmentedTabs`, `StatusBadge`, `AppModal`, `EmptyState`, `FeedbackProvider`, `StepperInput`, `PainScaleSelector`), com tipografia mínima de `13 px`, alvos de toque `>= 44 px`, ícones exclusivos via `@expo/vector-icons` e largura responsiva para Web (`680 px` / `960 px`).
+- **Zustand + AsyncStorage Isolado por Contexto (`src/store/useStore.ts`):** Persistência local *offline-first* com IDs UUID v4 via `expo-crypto`, isolamento de dados entre modo visitante (`guest`) e contas autenticadas (`userId`), e fila de sincronização offline em [`src/services/sync.ts`](src/services/sync.ts).
+- **Supabase (`@supabase/supabase-js`) & LGPD:** Cliente opcional em [`src/services/supabase.ts`](src/services/supabase.ts), conversores UI ↔ banco em [`src/services/mappers.ts`](src/services/mappers.ts), operações CRUD + Realtime + upload de avatar (`arrayBuffer`) em [`src/services/db.ts`](src/services/db.ts), script idempotente em [`supabase/schema.sql`](supabase/schema.sql) com Row Level Security (RLS) e Edge Function [`supabase/functions/delete-account/index.ts`](supabase/functions/delete-account/index.ts) para exclusão definitiva da conta e dados.
+- **Regras Clínicas, Gráficos e PDF:** Helpers puros testados em [`src/services/clinicaHelpers.ts`](src/services/clinicaHelpers.ts), gráficos em [`src/components/ClinicaCharts.tsx`](src/components/ClinicaCharts.tsx) e geração de prontuário clínico consolidado em PDF em [`src/services/prontuarioPdf.ts`](src/services/prontuarioPdf.ts).
+- **Recursos Nativos Expo & CI:** `expo-notifications`, `expo-location` (GPS), `expo-print`, `expo-sharing`, `expo-image-picker`, `expo-auth-session`, `expo-web-browser` e pipeline CI em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+---
+
+## Como Instalar e Rodar
 
 ### Pré-requisitos
-- **Node.js** `>= 20` e `npm`
-- Aplicativo **Expo Go** no celular (opcional, para testar em Android/iOS)
+- **Node.js** `>= 20` e **npm**
+- Aplicativo **Expo Go** ou build nativo (para testes em Android/iOS)
 
 ### Passo a passo
 ```bash
@@ -36,155 +38,137 @@ cp .env.example .env
 # Preencha EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY e EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 ```
 
-> **Modo local / demonstração:** Mesmo sem configurar o `.env`, o app inicia normalmente no modo offline usando `admin` / `admin` ou o botão **Entrar sem Login (Acesso Rápido)**.
+> **Modo local / offline (sem `.env`):** O aplicativo abre e funciona integralmente sem variáveis de ambiente por meio do botão **Entrar sem Login (Acesso Rápido)** (dados mantidos apenas no aparelho). Em ambiente de desenvolvimento (`__DEV__`), também é aceito o usuário de demonstração `admin` / `admin`.
 
 ### Comandos úteis
 ```bash
-# Rodar no navegador (Expo Web)
-npm run web
-
-# Iniciar servidor Expo (QR Code para Expo Go no Android/iOS)
+# Iniciar servidor Expo (QR Code para Android/iOS)
 npm start
+
+# Abrir no navegador (Expo Web)
+npm run web
 
 # Validar tipagem TypeScript
 npx tsc --noEmit
 
-# Executar testes automatizados (Jest)
+# Executar suíte de testes automatizados (Jest — 6 suítes / 53 testes)
 npm test
+
+# Gerar bundle de produção Web para verificação
+npx expo export --platform web
 ```
 
-Para habilitar a persistência na nuvem, crie um projeto no painel do **Supabase** e execute o script [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (que também cria e configura o bucket `avatars` no Supabase Storage).
+### Configuração da Nuvem (Supabase — Passos Manuais)
+1. Crie um projeto no painel do **Supabase** e copie a URL e a `anon key` para o seu `.env` local (baseado em [`.env.example`](.env.example)).
+2. Execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** do Supabase (script idempotente: cria tabelas, colunas, RLS e políticas do bucket `avatars`).
+3. Configure as **Redirect URLs** no Supabase Auth incluindo `meuappdesaude://redefinir-senha` e o domínio Web utilizado.
+4. Faça o deploy da Edge Function de exclusão LGPD com a Supabase CLI (mantendo `SUPABASE_SERVICE_ROLE_KEY` somente no servidor):
+   ```bash
+   supabase functions deploy delete-account
+   ```
 
 ---
 
-## 🗂️ Estrutura do Projeto
+## Estrutura do Projeto
 
 ```text
+.github/workflows/ci.yml          # Pipeline CI: npm ci, npx tsc --noEmit e npm test -- --ci
 src/
 ├── components/
-│   └── ClinicaCharts.tsx       # Gráfico em barras acessível para evolução clínica (RF33, RF37, RF46)
+│   ├── ClinicaCharts.tsx         # Gráficos em barras acessíveis integrados aos tokens do Design System
+│   └── ui/                       # ScreenShell, AppCard, AppButton, AppInput, ChipSelector, SegmentedTabs,
+│                                 # StatusBadge, AppModal, EmptyState, FeedbackProvider, StepperInput, PainScaleSelector
 ├── navigation/
-│   └── AppNavigator.tsx        # Rotas + listener onAuthStateChange e persistência de sessão
+│   └── AppNavigator.tsx          # Rotas tipadas, sessão Supabase, deep links (PASSWORD_RECOVERY) e flush em AppState
 ├── screens/
-│   ├── Login/                  # Autenticação (Supabase + Google OAuth + recuperação de senha + admin/admin + acesso rápido)
-│   ├── Cadastro/               # Criação de conta (Supabase signUp + perfil inicial + modo offline)
-│   ├── Inicial/                # Dashboard unificado + acesso aos serviços das Clínicas-Escola da UNC
-│   ├── Perfil/                 # IMC, gráfico de Peso/IMC, comorbidades, alergias, meta de água e diário de treinos (kcal)
-│   ├── SinaisVitais/           # BPM, glicemia, PA, SpO2, temperatura, gráfico de evolução, checklist e CRUD
-│   ├── Humor/                  # Diário de humor, relato livre, registro de sono, gráfico semanal e PHQ-9 / GAD-7
-│   ├── Lembretes/              # Alarmes editáveis com periodicidades avançadas (useStore), estoque, baixa automática e PDF
-│   ├── Fisioterapia/           # Registro de dor EVA com região corporal e tipo de dor, gráfico e histórico
-│   ├── Configuracoes/          # Edição de perfil, avatar (Storage + galeria), recuperação de senha e logout
-│   └── SobreUNC/               # Serviços à comunidade por curso, Clínicas-Escola, agendamento e GPS
+│   ├── Login/                    # E-mail/senha, toggle olho, Google OAuth, recuperação de senha, __DEV__ admin e Acesso Rápido
+│   ├── Cadastro/                 # Cadastro com validação de e-mail, máscara de telefone, força de senha e checkbox LGPD
+│   ├── RedefinirSenha/           # Definição de nova senha via deep link de recuperação (updateUser)
+│   ├── Inicial/                  # Saudação com data, alertas de alergia/estoque, "Resumo de Hoje" e grid das áreas
+│   ├── Configuracoes/            # Meus Dados (avatar Storage), Segurança/LGPD (troca de senha e exclusão dupla) e sessão
+│   ├── Humor/                    # Psicologia: botão SOS no header, respiração 4-7-8 & grounding 5-4-3-2-1, sono, diário, PHQ-9/GAD-7 e filtros
+│   ├── SinaisVitais/             # Enfermagem: StepperInput com faixa inline, checklist X/6, gráfico por métrica e CRUD
+│   ├── Lembretes/                # Farmácia & Agenda: abas Alarmes/Estoque, baixa diária única por data, PDF estoque e Prontuário PDF
+│   ├── Perfil/                   # Corpo & Movimento unificado em 3 abas (Perfil & Saúde, Ed. Física, Fisioterapia & Dor)
+│   ├── Fisioterapia/             # Rota alias para a aba Fisioterapia & Dor + modais Exercícios de Hoje e Lembretes de Postura
+│   └── SobreUNC/                 # Clínicas-Escola da UNC, serviços por curso, contatos e localização GPS
 ├── services/
-│   ├── supabase.ts             # Cliente Supabase + detecção de configuração (.env)
-│   ├── db.ts                   # Funções CRUD, Realtime e upload de avatar (Supabase Storage)
-│   ├── notifications.ts        # Serviço centralizado de notificações locais (diária, semanal, dias específicos)
-│   └── notifications.test.ts   # Suíte Jest (30 testes) do serviço de notificações
+│   ├── authRecovery.ts           # Redirect URL, parser de tokens de recuperação, força de senha e máscara de telefone (+ testes)
+│   ├── clinicaHelpers.ts         # IMC contínuo, meta semanal real, baixa diária de estoque, validade e exercícios (+ testes)
+│   ├── db.ts                     # CRUD completo nas tabelas Supabase, Realtime e upload de avatar com arrayBuffer
+│   ├── mappers.ts                # Conversão bidirecional segura UI ↔ banco de todas as entidades (+ testes)
+│   ├── notifications.ts          # Serviço centralizado de notificações locais e periodicidades (+ testes)
+│   ├── prontuarioPdf.ts          # Geração HTML com escape seguro e exportação em PDF do prontuário completo (+ testes)
+│   ├── supabase.ts               # Cliente Supabase com detecção segura de ambiente sem .env
+│   └── sync.ts                   # Fila offline-first em AsyncStorage, hidratação e isolamento de contextos (+ testes)
 ├── store/
-│   └── useStore.ts             # Store global Zustand + AsyncStorage
+│   └── useStore.ts               # Zustand + UUID v4 + isolamento guest/userId e sincronização com a nuvem
+├── theme/
+│   └── tokens.ts                 # Paleta institucional UNC, tipografia >= 13px, espaçamentos, raios e sombras
 └── types/
-    └── index.ts                # Interfaces TypeScript do domínio clínico
+    └── index.ts                  # Interfaces TypeScript do domínio clínico
 supabase/
-└── schema.sql                  # Schema PostgreSQL, políticas RLS e bucket Storage 'avatars'
+├── schema.sql                    # Schema PostgreSQL idempotente, RLS por auth.uid() e bucket Storage 'avatars'
+└── functions/
+    └── delete-account/index.ts   # Edge Function Deno para exclusão definitiva LGPD (JWT + service_role no servidor)
 ```
 
 ---
 
-## 🛠️ Status Atual das Telas
+## Telas e Funcionalidades Implementadas
 
-1. **🔑 Login (`src/screens/Login`)**
-   - **Funciona:** Acesso demo (`admin` / `admin`), botão **Entrar sem Login (Acesso Rápido)**, login real com Supabase (`signInWithPassword` e Google OAuth via `signInWithIdToken` quando `.env` estiver configurado), modal de recuperação de senha (`resetPasswordForEmail`), persistência automática de sessão no `AppNavigator` (`getSession` + `onAuthStateChange`) e atalho para os **Serviços das Clínicas-Escola da UNC**.
+1. **Login (`src/screens/Login`), Cadastro (`src/screens/Cadastro`) e Redefinição de Senha (`src/screens/RedefinirSenha`)**
+   - Autenticação com e-mail e senha (validação alinhada com o rótulo `E-mail *`), botão mostrar/ocultar senha, indicador de força de senha e máscara de telefone.
+   - Recuperação de senha por e-mail com deep link para `RedefinirSenha`, Google OAuth configurável via `.env`, acesso `admin/admin` restrito a `__DEV__` e **Acesso Rápido** local com aviso explícito de armazenamento no aparelho.
+   - Aceite obrigatório dos **Termos de Uso e Política de Privacidade (LGPD)** gravando `termosAceitosEm`.
 
-2. **📝 Cadastro (`src/screens/Cadastro`)**
-   - **Funciona:** Cadastro integrado ao `supabase.auth.signUp` (criando registro inicial na tabela `perfis` quando a sessão é autenticada) com fallback local offline (`useStore`), nome completo, validação de senha e confirmação.
-   - **Pendente:** Aceite obrigatório dos Termos de Uso e Política de Privacidade LGPD ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)).
+2. **Inicial (`src/screens/Inicial`)**
+   - Saudação personalizada com data por extenso, indicador de modo local (quando visitante), alertas prioritários (alergias registradas, estoque baixo ou vencimento), faixa **Resumo de Hoje** clicável (próximo alarme, último sinal vital, humor e treinos/dor), grid responsivo das 4 áreas de cuidado e acesso às **Clínicas-Escola da UNC**.
 
-3. **🏠 Inicial (`src/screens/Inicial`)**
-   - **Funciona:** Exibe saudação e avatar do usuário no `useStore`, os **4 cartões principais por curso** (**Saúde Mental / Psicologia**, **Sinais Vitais / Enfermagem**, **Lembretes / Farmácia** e **Corpo & Movimento / Ed. Física & Fisioterapia**) padronizados com acessibilidade `RNF01`, além do **cartão das Clínicas-Escola & Serviços da UNC** (`Ver Serviços da UNC`) e acesso às `Configurações`.
-   - **Observação:** A tela `Fisioterapia` já existe nas rotas, mas sua unificação por abas dentro de `Corpo & Movimento` está planejada na issue [#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21).
+3. **Configurações (`src/screens/Configuracoes`)**
+   - Organizada em 3 blocos: **Meus Dados** (edição de nome, telefone e avatar via galeria/Supabase Storage), **Segurança e Privacidade** (troca de senha logado, envio de e-mail de recuperação e exclusão definitiva de conta/dados LGPD com dupla confirmação digitando `EXCLUIR`) e **Institucional e Sessão**.
 
-4. **⚙️ Configurações (`src/screens/Configuracoes`)**
-   - **Funciona:** Atualiza nome, telefone e foto de perfil via `expo-image-picker` (com upload automático para o bucket `avatars` no Supabase Storage e sync em `perfis`), recuperação de senha real via modal (`supabase.auth.resetPasswordForEmail`), `signOut` real no Supabase + limpeza do `useStore` ao sair e acesso aos **Serviços da UNC à Comunidade**.
-   - **Pendente:** Botão definitivo de exclusão de conta e dados LGPD ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)).
+4. **Saúde Mental — Psicologia (`src/screens/Humor`)**
+   - Botão de emergência **Preciso de ajuda** fixo no header abrindo contatos clicáveis (`tel:`) do CVV (`188`), SAMU (`192`), CAPS (`136`) e Clínica-Escola UNC.
+   - Card **"Precisa desacelerar?"** com modal interativo de **Respiração Guiada** (`4-7-8` e `Diafragmática`) e checklist sensorial **Grounding 5-4-3-2-1**.
+   - Registro diário com botão salvar bloqueado até seleção de humor, registro de horas/qualidade do sono e diário sempre visíveis, questionários **PHQ-9** e **GAD-7** com barra de progresso, gráfico semanal e linha do tempo com filtros (`Todos`, `Humor`, `Triagens`, `Sinais Vitais`).
 
-5. **🧠 Saúde Mental — Psicologia & Humor (`src/screens/Humor`)**
-   - **Funciona:** Seleção de humor (Feliz, Triste, Nervoso, Ansioso) com fator de influência, **registro de horas e qualidade do sono (`RF42`)**, **diário em texto livre opcional (*"Como foi seu dia?"* — `RF36`)**, **gráfico semanal de frequência de humores (`RF37`)**, **questionários validados PHQ-9 (depressão) e GAD-7 (ansiedade)** com cálculo automático de escore, faixa de risco, aviso de acolhimento CVV (`188`) em casos críticos e linha do tempo integrada com Sinais Vitais (`useStore`).
-   - **Pendente:** Botão SOS Crise + modal de respiração guiada/grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
+5. **Sinais Vitais — Enfermagem (`src/screens/SinaisVitais`)**
+   - Controles `StepperInput` (`−` campo `+`) para FC (bpm), Glicemia (com tipo obrigatório), Pressão Arterial Sistólica/Diastólica (faixa única `100–130 mmHg` unificada entre alerta, feedback e gráfico), SpO₂ e Temperatura Corporal (°C), além de checklist diário de cuidados (`X/6`), gráfico interativo por métrica e edição/exclusão com confirmação via `FeedbackProvider`.
 
-6. **🩺 Sinais Vitais — Enfermagem (`src/screens/SinaisVitais`)**
-   - **Funciona:** Seletor vertical (`VerticalWheelPicker`) para BPM, Glicemia (com tipo obrigatório: Jejum, Pré-prandial ou Pós-prandial), Pressão Sistólica/Diastólica (com verificação de PA convergente/divergente) e SpO2; campo de **Temperatura Corporal (°C)** com alertas automáticos de **Febre (`> 37.8 °C`)** e **Hipotermia (`< 35.0 °C`)**; **gráfico interativo de evolução clínica** (BPM, Glicemia, Pressão, SpO2 e Temperatura); **Checklist Diário de Cuidados Básicos e Higiene** persistido por data; alertas via serviço centralizado [`notifications.ts`](src/services/notifications.ts); e **edição e exclusão** completas dos registros salvos no `useStore`.
+6. **Lembretes & Farmácia (`src/screens/Lembretes`)**
+   - Abas **Alarmes** e **Estoque Farmácia**, adesão diária no topo, máscaras automáticas `HH:MM` e `MM/AAAA`, preservação de periodicidade (`diaria`, `semanal`, `dias_especificos`) ao editar, campos estruturados para lembretes de consulta/fisioterapia e baixa diária única (`-1` unidade sem duplicação via `dosesTomadasPorData`/`dosesBaixadasPorData`).
+   - Controle de estoque com alertas de estoque baixo (`<= 5`), validade (vencido/próximo), histórico de descontinuados e exportação de **PDF do Estoque** ou **Prontuário Clínico Completo (PDF)**.
 
-7. **⏰ Lembretes & Farmácia (`src/screens/Lembretes`)**
-   - **Funciona:** Estado unificado no `useStore` com migração automática das chaves legadas (`#16`); **serviço centralizado de notificações [`notifications.ts`](src/services/notifications.ts)** com suporte a periodicidades **diária, semanal e dias específicos da semana** (`#25`); **edição completa de lembretes** com reagendamento de alarme (`RF14`); **baixa automática de `-1` unidade no estoque** ao marcar um lembrete de remédio como tomado (`RF18`); cadastro e edição de medicamentos com **médico prescritor (`RF15`)**, **validade (`RF17`)** e **orientação de armazenamento (`RF19`)**; **alerta visual vermelho de Estoque Baixo (`<= 5`)** e de vencimento; **Histórico de Medicamentos Descontinuados (`RF20`)** com opção de reativação; alerta de interação básica (`AAS` / `Aspirina`); e exportação do estoque completo em PDF/impressão (`expo-print` + `expo-sharing` com suporte a Web).
-   - **Pendente:** Ampliação do PDF para prontuário resumo do paciente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
+7. **Corpo & Movimento — Perfil, Ed. Física e Fisioterapia (`src/screens/Perfil` e `src/screens/Fisioterapia`)**
+   - Tela unificada em 3 abas (**Perfil & Saúde**, **Educação Física**, **Fisioterapia & Dor**) com a rota `Fisioterapia` mantida como alias direto.
+   - Destaque de alergias no topo, IMC contínuo (sem lacunas nas fronteiras `25.0`/`30.0`) com barra visual de faixas da OMS, meta diária de água (`35 ml × peso`) com copos visuais, meta semanal real (segunda a domingo), biblioteca de exercícios filtrada por comorbidades com aviso de liberação médica, escala de dor **EVA `0–10`** tátil e modais funcionais para **Exercícios Terapêuticos de Hoje** e **Lembretes de Postura e Sessões**.
 
-8. **🏃 Corpo & Movimento — IMC, Perfil & Educação Física (`src/screens/Perfil`)**
-   - **Funciona:** Persistência completa no `useStore` (`idade`, `peso`, `altura`, `sexo`, `imc`, **`comorbidades`**, **`alergias`**); **gráfico de evolução de Peso e IMC (`RF33`)**; destaque visual em alerta vermelho no topo do perfil quando há alergias registradas; cálculo automático da **Meta Diária de Água (`35 ml × peso`)**; frequência de atividades e meta semanal; biblioteca de exercícios em modal; e **Diário de Treinos** com **duração (min)**, **intensidade** (`Leve`, `Moderado`, `Intenso`) e **cálculo estimado de gasto calórico (`kcal`)**.
-   - **Pendente:** Unificação em abas com `Fisioterapia` ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
-
-9. **🦵 Fisioterapia (`src/screens/Fisioterapia`)**
-   - **Funciona:** Registro diário do nível de dor na escala EVA (`0` a `10`) com seleção de **região corporal** (*Coluna Lombar, Pescoço, Joelho, Ombro, Punho*) e **tipo de dor** (*Muscular, Articular, Pontada, Queimação* — `RF43`), **gráfico de evolução da dor com classificação de gravidade (`RF46`)** e histórico detalhado salvo no `useStore`, padronizados para alto contraste e acessibilidade (`RNF01`).
-   - **⚠️ Mocks / Pendentes:** Os botões "Exercícios de Hoje" e "Lembretes de Postura" ainda estão sem ação ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
-
-10. **🎓 Serviços da UNC à Comunidade & Clínicas-Escola (`src/screens/SobreUNC`)**
-    - **Funciona:** Apresenta os serviços prestados à população pelas **Clínicas-Escola** dos cursos de **Medicina, Fisioterapia, Odontologia, Psicologia e Enfermagem** (abertura em modal com abas de *Serviços*, *Agendamento* e *GPS & Campi*), localização e rotas por **GPS (`expo-location`)** para os campi da UNC e nota de apresentação do app como **projeto de curricularização da extensão**.
+8. **Serviços da UNC à Comunidade (`src/screens/SobreUNC`)**
+   - Informações das Clínicas-Escola (Medicina, Fisioterapia, Odontologia, Psicologia, Enfermagem e Espaço Mais Saúde), agendamento e cálculo de distância/rotas por GPS (`expo-location`), com telefones de Fisioterapia e Enfermagem marcados com `// TODO: confirmar com a UNC` em [`src/screens/SobreUNC/uncData.ts`](src/screens/SobreUNC/uncData.ts).
 
 ---
 
-<details>
-<summary>📋 Ver visão geral dos Requisitos do Sistema</summary>
+## Roadmap e Gestão no GitHub Projects
 
-Consulte o documento completo com o status atualizado de cada requisito em [`REQUISITOS.md`](REQUISITOS.md).
+O acompanhamento das turmas é organizado no GitHub Project [**MeuAppDeSaude - Fases 1a a 6a**](https://github.com/orgs/bonasticos/projects/1) com classificação explícita de **Dificuldade** alinhada às fases:
+- **6ª Fase (`Dificil`):** Arquitetura, Design System, sync offline-first, mappers, UUIDs, Auth/LGPD, Edge Function, CI/testes e deploy em nuvem.
+- **4ª Fase (`Media`):** Regras clínicas, unificação Corpo & Movimento em 3 abas, prontuário PDF, questionários/gráficos e validações multiplataforma.
+- **2ª Fase (`Facil`):** Modais clínicos, redesign acessível, remoção de emojis estruturais/`RFxx`, máscaras de formulário e revisão de contatos UNC.
 
-</details>
+### Pendências manuais abertas no board
+- [ ] **[6ª Fase · Difícil]** Provisionar projeto no painel do Supabase, executar `supabase/schema.sql` e preencher `.env` ([#22](https://github.com/bonasticos/MeuAppDeSaude/issues/22)).
+- [ ] **[6ª Fase · Difícil]** Fazer deploy da Edge Function `delete-account`, configurar Redirect URLs e validar fluxo E2E no Supabase real ([#45](https://github.com/bonasticos/MeuAppDeSaude/issues/45)).
+- [ ] **[4ª Fase · Média]** Validar app em dispositivos físicos (Android/iOS) e viewports Web responsivos `375 / 768 / 1280 px` ([#49](https://github.com/bonasticos/MeuAppDeSaude/issues/49)).
+- [ ] **[2ª Fase · Fácil]** Confirmar telefones oficiais de Fisioterapia e Enfermagem junto às coordenações da UNC ([#53](https://github.com/bonasticos/MeuAppDeSaude/issues/53)).
 
----
-
-## 🤝 Guia de Contribuição
-
-Este repositório segue fluxo colaborativo por branches e Pull Requests entre as turmas das fases do curso de Engenharia de Software.
-
-### Branches
-> **Evite commits diretos na `master` em tarefas em equipe.** Crie uma branch dedicada por issue e abra um Pull Request.
-
-| Prefixo | Uso | Exemplo |
-|---|---|---|
-| `feature/` | nova funcionalidade | `feature/modais-fisio` |
-| `fix/` | correção de bug | `fix/alerta-estoque` |
-| `docs/` | documentação | `docs/atualiza-readme` |
-| `refactor/` | refatoração sem mudar comportamento | `refactor/tabs-perfil-fisio` |
-| `chore/` | manutenção, dependências, CI | `chore/github-actions-ci` |
-
-### Padrão de Commits (Conventional Commits)
-```text
-tipo(escopo opcional): descrição curta no imperativo
-```
-Tipos recomendados: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`.  
-Exemplos:
-```text
-feat(psico): adiciona botao SOS crise e respiracao guiada
-fix(farmacia): valida estoque negativo ao confirmar dose
-docs: atualiza README e REQUISITOS com entregas do Ciclo 3
-```
-
-### Pull Requests & Issues
-- Vincule sempre a issue relacionada na descrição do PR usando `Closes #X`.
-- Rode `npx tsc --noEmit` antes de abrir o PR.
-- **Nunca** commitar credenciais reais ou o arquivo `.env` (mantenha apenas o `.env.example` versionado).
+Consulte também [`REQUISITOS.md`](REQUISITOS.md) para o detalhamento dos requisitos de domínio.
 
 ---
 
-## 🚧 Próximos Passos (Backlog Aberto por Fase)
+## Guia de Contribuição
 
-### 2ª Fase (UI, Modais e Recursos Específicos)
-- [ ] **Psicologia**: Botão SOS Crise e modal de respiração guiada / grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
-- [ ] **Fisioterapia**: Modais de Exercícios de Hoje e Lembretes de Postura ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
-
-### 4ª Fase (Refatoração UI & Prontuário)
-- [ ] **Refatoração UI & PDF**: Unificação por abas de `Perfil` + `Fisioterapia` em `Corpo & Movimento` e ampliação do relatório PDF para prontuário resumido do paciente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
-
-### 6ª Fase (Supabase Provisioning, Offline-First Sync, LGPD e DevOps)
-- [ ] **Supabase Cloud**: Provisionar o projeto no painel do Supabase, executar [`supabase/schema.sql`](supabase/schema.sql) (incluindo bucket `avatars`) e preencher `.env` ([#22](https://github.com/bonasticos/MeuAppDeSaude/issues/22)).
-- [ ] **Offline-First Sync**: Sincronizar automaticamente todas as actions do `useStore` com [`src/services/db.ts`](src/services/db.ts) ([#24](https://github.com/bonasticos/MeuAppDeSaude/issues/24)).
-- [ ] **LGPD & CI**: Aceite LGPD + exclusão definitiva de conta e dados ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)), CI de TypeScript via GitHub Actions e revisão de componentes base ([#27](https://github.com/bonasticos/MeuAppDeSaude/issues/27)).
+1. Crie uma branch dedicada (`feature/`, `fix/`, `docs/`, `refactor/`, `chore/`) a partir da `master`.
+2. Use **Conventional Commits** (`feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`).
+3. Vincule a issue no PR (`Closes #X`) e execute `npx tsc --noEmit` e `npm test` antes de abrir o Pull Request.
+4. **Nunca** commite `.env`, credenciais reais ou chaves `service_role`.
