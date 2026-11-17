@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 export interface ChartPoint {
   label: string;
@@ -54,8 +55,9 @@ export function BarChartCard({
           <View style={styles.barsRow}>
             {safeData.map((point, idx) => {
               const ratio = Math.max(0, Math.min(1, point.value / scaleTop));
-              const barHeight = point.value > 0 ? Math.max(10, Math.round(ratio * CHART_BAR_AREA_HEIGHT)) : 4;
-              const barColor = point.color || '#0D6EFD';
+              const barHeight =
+                point.value > 0 ? Math.max(10, Math.round(ratio * CHART_BAR_AREA_HEIGHT)) : 4;
+              const barColor = point.color || colors.brand.primary;
 
               return (
                 <View key={`${point.label}-${idx}`} style={styles.barColumn}>
@@ -99,46 +101,36 @@ export function BarChartCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: colors.surface.card,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    ...shadows.card,
   },
   title: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 4,
+    ...typography.h2,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
-    color: '#374151',
-    marginBottom: 12,
-    lineHeight: 21,
+    ...typography.bodyCompact,
+    marginBottom: spacing.md,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#374151',
-    fontStyle: 'italic',
+    ...typography.bodyCompact,
+    color: colors.text.muted,
     textAlign: 'center',
-    paddingVertical: 20,
-    lineHeight: 22,
+    paddingVertical: spacing.xl,
   },
   chartWrapper: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingTop: 14,
-    paddingBottom: 10,
+    backgroundColor: colors.surface.canvas,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border.default,
   },
   barsRow: {
     flexDirection: 'row',
@@ -153,8 +145,9 @@ const styles = StyleSheet.create({
   },
   valueLabel: {
     fontSize: 13,
-    fontWeight: '800',
-    color: '#0F172A',
+    lineHeight: 18,
+    fontWeight: '700',
+    color: colors.text.primary,
     marginBottom: 6,
     textAlign: 'center',
   },
@@ -165,25 +158,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     borderBottomWidth: 2,
-    borderBottomColor: '#CBD5E1',
+    borderBottomColor: colors.border.default,
   },
   barFill: {
     width: '100%',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    borderTopLeftRadius: radii.sm,
+    borderTopRightRadius: radii.sm,
   },
   axisLabel: {
-    marginTop: 8,
+    marginTop: spacing.sm,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.text.secondary,
     textAlign: 'center',
   },
   legendRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 12,
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   legendItem: {
     flexDirection: 'row',
@@ -197,7 +191,8 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
+    lineHeight: 19,
+    fontWeight: '600',
+    color: colors.text.secondary,
   },
 });
