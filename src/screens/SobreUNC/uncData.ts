@@ -118,7 +118,7 @@ export const CLINICA_ESCOLA_GERAL: ServicoCursoInfo = {
   servicosComunidade: [
     'Espaço Mais Saúde (Mafra) — Triagem, acolhimento e agendamentos: (47) 3641-5519',
     'Medicina — Consultas ambulatoriais supervisionadas, atenção básica e mutirões preventivos',
-    'Fisioterapia — Reabilitação física, análise da pisada (baropodometria) e alívio da dor: (47) 3441-1015',
+    'Fisioterapia — Reabilitação física, análise da pisada (baropodometria) e alívio da dor: (47) 3441-1015', // TODO: confirmar com a UNC
     'Odontologia — Tratamentos clínicos gerais, restaurações e atendimento a Pacientes com Necessidades Especiais (PNE)',
     'Psicologia — Psicoterapia gratuita via encaminhamento SUS em Canoinhas e acolhimento regional',
     'Enfermagem — Aferição de pressão e glicemia, vacinação, curativos e orientação em cuidados diários',
@@ -185,7 +185,7 @@ export const SERVICOS_CURSOS_UNC: ServicoCursoInfo[] = [
       titulo: 'Clínica Escola de Fisioterapia UNC',
       descricao:
         'Atendimentos presenciais com avaliação individualizada para montar o plano terapêutico de acordo com a necessidade de cada paciente.',
-      contato: '(47) 3441-1015 / (47) 3641-5519',
+      contato: '(47) 3441-1015 / (47) 3641-5519', // TODO: confirmar com a UNC
       email: 'fisioterapia.mafra@unc.br',
       comoAgendar:
         'Ligue para (47) 3441-1015 ou para o Espaço Mais Saúde (47) 3641-5519, ou envie e-mail para fisioterapia.mafra@unc.br para agendar sua triagem.',
@@ -270,7 +270,7 @@ export const SERVICOS_CURSOS_UNC: ServicoCursoInfo[] = [
       titulo: 'Ações Comunitárias & Espaço Mais Saúde (Enfermagem)',
       descricao:
         'Serviços integrados ao Espaço Mais Saúde, campanhas itinerantes e unidades parceiras de atenção básica.',
-      contato: '(47) 3441-1021 / (47) 3641-5519',
+      contato: '(47) 3441-1021 / (47) 3641-5519', // TODO: confirmar com a UNC
       comoAgendar:
         'Para saber datas de mutirões e atendimentos de enfermagem, ligue para (47) 3441-1021 ou (47) 3641-5519.',
     },
