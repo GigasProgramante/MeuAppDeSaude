@@ -2,29 +2,6 @@ import { StyleSheet } from 'react-native';
 import { colors, radii, spacing, typography } from '../../theme/tokens';
 
 export const styles = StyleSheet.create({
-  quickHelpRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  quickHelpBtn: {
-    flex: 1,
-    minWidth: 165,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  quickHelpTitle: {
-    ...typography.label,
-  },
-  quickHelpSub: {
-    ...typography.caption,
-    color: colors.text.secondary,
-  },
   sectionCardGap: {
     gap: spacing.lg,
   },

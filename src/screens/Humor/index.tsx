@@ -107,6 +107,7 @@ export default function MoodScreen({ navigation }: Props) {
   );
   const [ciclosConcluidos, setCiclosConcluidos] = useState(0);
   const [groundingMarcados, setGroundingMarcados] = useState<string[]>([]);
+  const [timelineFilter, setTimelineFilter] = useState<'todos' | 'humor' | 'avaliacao' | 'sinal'>('todos');
 
   const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -303,53 +304,59 @@ export default function MoodScreen({ navigation }: Props) {
     ...(sinaisVitais || []).map((s) => ({ type: 'sinal' as const, data: s.data, item: s })),
   ].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
+  const filteredHistory = useMemo(
+    () =>
+      timelineFilter === 'todos'
+        ? mergedHistory
+        : mergedHistory.filter((item) => item.type === timelineFilter),
+    [mergedHistory, timelineFilter]
+  );
+
   return (
     <ScreenShell
       title="Saúde Mental"
       subtitle="Acompanhe seu bem-estar emocional, sono e triagens."
       areaBadge={{ label: 'Psicologia', color: areaAccent.color, bg: areaAccent.bg }}
       onBack={() => navigation.goBack()}
-    >
-      <View style={styles.quickHelpRow}>
-        <TouchableOpacity
-          style={[
-            styles.quickHelpBtn,
-            {
-              backgroundColor: colors.semantic.dangerBg,
-              borderColor: colors.semantic.dangerBorder,
-            },
-          ]}
+      rightAction={
+        <AppButton
+          title="Preciso de ajuda"
+          icon="call"
+          variant="danger"
+          compact
+          accessibilityLabel="Abrir canais de apoio emocional imediato"
           onPress={() => setSosModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="call" size={20} color={colors.semantic.danger} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.quickHelpTitle, { color: colors.semantic.danger }]}>
-              Preciso de ajuda agora
-            </Text>
-            <Text style={styles.quickHelpSub}>CVV 188 · Apoio imediato</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.quickHelpBtn,
-            { backgroundColor: areaAccent.bg, borderColor: areaAccent.color },
-          ]}
-          onPress={() => setRegulacaoModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="leaf" size={20} color={areaAccent.color} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.quickHelpTitle, { color: areaAccent.color }]}>
-              Respiração & Grounding
-            </Text>
-            <Text style={styles.quickHelpSub}>4-7-8 · Técnica 5-4-3-2-1</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+        />
+      }
+    >
       <View style={styles.sectionCardGap}>
+        <AppCard variant="alert" tone="info">
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: spacing.sm,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 190 }}>
+              <Text style={[styles.sectionTitle, { color: areaAccent.color }]}>
+                Precisa desacelerar?
+              </Text>
+              <Text style={[styles.sectionSub, { marginBottom: 0 }]}>
+                Pratique respiração guiada (4-7-8 / diafragmática) ou ancoragem 5-4-3-2-1.
+              </Text>
+            </View>
+            <AppButton
+              title="Iniciar Guia"
+              icon="leaf-outline"
+              variant="secondary"
+              compact
+              onPress={() => setRegulacaoModalVisible(true)}
+            />
+          </View>
+        </AppCard>
         <AppCard variant="elevated">
           <Text style={styles.sectionTitle}>Como você está se sentindo hoje?</Text>
           <Text style={styles.sectionSub}>Toque no estado emocional que melhor representa seu momento.</Text>
@@ -477,15 +484,27 @@ export default function MoodScreen({ navigation }: Props) {
 
         <AppCard variant="default">
           <Text style={styles.sectionTitle}>Linha do Tempo</Text>
-          {mergedHistory.length === 0 ? (
+          <ChipSelector
+            options={[
+              { value: 'todos', label: 'Todos' },
+              { value: 'humor', label: 'Humor' },
+              { value: 'avaliacao', label: 'Triagens' },
+              { value: 'sinal', label: 'Sinais Vitais' },
+            ]}
+            selected={timelineFilter}
+            onSelect={setTimelineFilter}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+          {filteredHistory.length === 0 ? (
             <EmptyState
               icon="journal-outline"
-              title="Nenhum registro ainda"
+              title="Nenhum registro nesta categoria"
               description="Seus registros de humor, triagens psicológicas e sinais vitais aparecerão aqui."
             />
           ) : (
             <View style={styles.historyList}>
-              {mergedHistory.slice(0, 10).map((record) => {
+              {filteredHistory.slice(0, 10).map((record) => {
                 if (record.type === 'humor') {
                   const h = record.item;
                   const moodConfig = getMoodConfig(h.moodId);
