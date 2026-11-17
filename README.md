@@ -72,7 +72,7 @@ npx expo export --platform web
 ## Estrutura do Projeto
 
 ```text
-.github/workflows/ci.yml          # Pipeline CI: npm ci, npx tsc --noEmit e npm test -- --ci
+.github/workflows/ci.yml          # Pipeline CI: expo-doctor, checagens estáticas, tsc, Jest e bundles Web/iOS
 src/
 ├── components/
 │   ├── ClinicaCharts.tsx         # Gráficos em barras acessíveis integrados aos tokens do Design System
