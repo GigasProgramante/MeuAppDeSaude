@@ -1,6 +1,7 @@
 -- ============================================================================
 -- SCHEMA SQL DO SUPABASE — MeuAppDeSaude
--- Basta copiar e colar no SQL Editor do Supabase e clicar em "Run"
+-- Script idempotente: pode ser executado do zero ou sobre banco existente.
+-- Copie e cole no SQL Editor do Supabase e clique em "Run".
 -- ============================================================================
 
 -- 1. Tabela de Perfis dos Pacientes
@@ -17,8 +18,11 @@ create table if not exists public.perfis (
   imc numeric,
   comorbidades text[],
   alergias text,
+  termos_aceitos_em timestamptz,
   updated_at timestamptz default now()
 );
+
+alter table public.perfis add column if not exists termos_aceitos_em timestamptz;
 
 -- 2. Tabela de Lembretes
 create table if not exists public.lembretes (
@@ -28,13 +32,34 @@ create table if not exists public.lembretes (
   concluido boolean default false,
   horario text not null,
   "notificationId" text,
+  notification_ids text[],
+  periodicidade text default 'diaria',
+  dias_semana integer[],
+  doses_tomadas_por_data jsonb default '{}'::jsonb,
   "nomeRemedio" text,
   frequencia text,
   observacoes text,
   "tipoAcao" text,
   "acaoPersonalizada" text,
+  consulta_local text,
+  consulta_especialidade text,
+  consulta_preparo text,
+  fisio_local text,
+  fisio_terapeuta text,
+  fisio_orientacoes text,
   created_at timestamptz default now()
 );
+
+alter table public.lembretes add column if not exists periodicidade text default 'diaria';
+alter table public.lembretes add column if not exists dias_semana integer[];
+alter table public.lembretes add column if not exists notification_ids text[];
+alter table public.lembretes add column if not exists doses_tomadas_por_data jsonb default '{}'::jsonb;
+alter table public.lembretes add column if not exists consulta_local text;
+alter table public.lembretes add column if not exists consulta_especialidade text;
+alter table public.lembretes add column if not exists consulta_preparo text;
+alter table public.lembretes add column if not exists fisio_local text;
+alter table public.lembretes add column if not exists fisio_terapeuta text;
+alter table public.lembretes add column if not exists fisio_orientacoes text;
 
 -- 3. Tabela de Medicamentos (Farmácia / Estoque)
 create table if not exists public.medicamentos (
@@ -80,12 +105,11 @@ create table if not exists public.humor_historico (
   data timestamptz default now()
 );
 
--- Migração para bancos já criados antes do diário livre (RF36) e registro de sono (RF42)
 alter table public.humor_historico add column if not exists anotacao text;
 alter table public.humor_historico add column if not exists "horasSono" text;
 alter table public.humor_historico add column if not exists "qualidadeSono" text;
 
--- 7. Tabela de Avaliações Psicológicas (PHQ-9 / GAD-7)
+-- 6. Tabela de Avaliações Psicológicas (PHQ-9 / GAD-7)
 create table if not exists public.avaliacoes_psicologia (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -98,7 +122,7 @@ create table if not exists public.avaliacoes_psicologia (
   data timestamptz default now()
 );
 
--- 8. Tabela de Treinos (Educação Física)
+-- 7. Tabela de Treinos (Educação Física)
 create table if not exists public.treinos (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -109,7 +133,7 @@ create table if not exists public.treinos (
   data timestamptz default now()
 );
 
--- 9. Tabela de Histórico de Dor (Fisioterapia)
+-- 8. Tabela de Histórico de Dor (Fisioterapia)
 create table if not exists public.historico_dor (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -119,11 +143,10 @@ create table if not exists public.historico_dor (
   data timestamptz default now()
 );
 
--- Migração para bancos já criados antes dos campos de região e tipo de dor
 alter table public.historico_dor add column if not exists regiao text;
 alter table public.historico_dor add column if not exists tipo text;
 
--- 10. Tabela de Histórico de Peso / IMC
+-- 9. Tabela de Histórico de Peso / IMC
 create table if not exists public.historico_imc (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -132,8 +155,18 @@ create table if not exists public.historico_imc (
   data timestamptz default now()
 );
 
+-- 10. Tabela de Checklist Diário de Cuidados (Enfermagem)
+create table if not exists public.checklist_cuidados (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  data text not null,
+  itens_concluidos text[] not null default '{}',
+  updated_at timestamptz default now(),
+  unique (user_id, data)
+);
+
 -- ============================================================================
--- SEGURANÇA: ROW LEVEL SECURITY (RLS) - LGPD (RNF03 / RNF04)
+-- SEGURANÇA: ROW LEVEL SECURITY (RLS) - LGPD
 -- Cada paciente autenticado só pode ler, inserir, editar ou excluir os próprios dados
 -- ============================================================================
 alter table public.perfis enable row level security;
@@ -145,6 +178,7 @@ alter table public.avaliacoes_psicologia enable row level security;
 alter table public.treinos enable row level security;
 alter table public.historico_dor enable row level security;
 alter table public.historico_imc enable row level security;
+alter table public.checklist_cuidados enable row level security;
 
 drop policy if exists "Paciente gerencia proprio perfil" on public.perfis;
 create policy "Paciente gerencia proprio perfil" on public.perfis
@@ -182,6 +216,10 @@ drop policy if exists "Paciente gerencia proprio historico imc" on public.histor
 create policy "Paciente gerencia proprio historico imc" on public.historico_imc
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Paciente gerencia proprio checklist cuidados" on public.checklist_cuidados;
+create policy "Paciente gerencia proprio checklist cuidados" on public.checklist_cuidados
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- ============================================================================
 -- STORAGE BUCKET PARA FOTOS DE PERFIL (avatars)
 -- ============================================================================
@@ -197,6 +235,11 @@ create policy "Usuario envia proprio avatar" on storage.objects
 drop policy if exists "Usuario atualiza proprio avatar" on storage.objects;
 create policy "Usuario atualiza proprio avatar" on storage.objects
   for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "Usuario remove proprio avatar" on storage.objects;
+create policy "Usuario remove proprio avatar" on storage.objects
+  for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
 drop policy if exists "Avatars sao visiveis" on storage.objects;

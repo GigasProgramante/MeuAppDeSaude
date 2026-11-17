@@ -2,6 +2,8 @@ export interface LembreteBase {
   id: string;
   tipo: 'remedio' | 'acao';
   concluido: boolean;
+  /** Mapa YYYY-MM-DD -> true para controlar conclusão diária sem baixa dupla no estoque. */
+  dosesTomadasPorData?: Record<string, boolean>;
   horario: string; // Ex: 08:00
   notificationId?: string;
   notificationIds?: string[];
@@ -18,13 +20,20 @@ export interface LembreteRemedio extends LembreteBase {
 
 export interface LembreteAcao extends LembreteBase {
   tipo: 'acao';
-  tipoAcao: 'consulta' | 'exercicio' | 'agua' | 'pressao' | 'outro';
+  tipoAcao: 'consulta' | 'exercicio' | 'agua' | 'pressao' | 'fisioterapia' | 'outro';
   acaoPersonalizada?: string;
+  consultaLocal?: string;
+  consultaEspecialidade?: string;
+  consultaPreparo?: string;
+  fisioLocal?: string;
+  fisioTerapeuta?: string;
+  fisioOrientacoes?: string;
 }
 
 export type Lembrete = LembreteRemedio | LembreteAcao;
 export type LembreteInput = Omit<LembreteRemedio, 'id'> | Omit<LembreteAcao, 'id'>;
-export type LembretePatch = Partial<Omit<LembreteRemedio, 'id' | 'tipo'>> & Partial<Omit<LembreteAcao, 'id' | 'tipo'>>;
+export type LembretePatch = Partial<Omit<LembreteRemedio, 'id' | 'tipo'>> &
+  Partial<Omit<LembreteAcao, 'id' | 'tipo'>>;
 
 export interface SinalVital {
   id: string;
@@ -46,9 +55,9 @@ export interface HumorRegistro {
   id: string;
   moodId: string;
   activity?: string;
-  anotacao?: string; // Diário de texto livre "Como foi seu dia?" (RF36)
-  horasSono?: HorasSono; // Registro de sono (RF42)
-  qualidadeSono?: QualidadeSono; // Registro de sono (RF42)
+  anotacao?: string; // Diário de texto livre "Como foi seu dia?"
+  horasSono?: HorasSono; // Registro de sono
+  qualidadeSono?: QualidadeSono; // Registro de sono
   data: string;
 }
 
@@ -122,4 +131,5 @@ export interface PerfilUsuario {
   imc?: number;
   comorbidades?: string[];
   alergias?: string;
+  termosAceitosEm?: string;
 }

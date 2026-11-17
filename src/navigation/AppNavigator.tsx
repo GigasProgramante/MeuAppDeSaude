@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -14,7 +14,7 @@ import TelaFisioterapia from '../screens/Fisioterapia';
 import TelaConfiguracoes from '../screens/Configuracoes';
 import TelaSobreUNC from '../screens/SobreUNC';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { buscarPerfil } from '../services/db';
+import { flushSyncQueue, GUEST_CONTEXT_KEY } from '../services/sync';
 import { useStore } from '../store/useStore';
 
 export type RootStackParamList = {
@@ -34,51 +34,56 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function AppNavigator() {
-  const [sessionChecked, setSessionChecked] = useState(!isSupabaseConfigured);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [initialRoute, setInitialRoute] = useState<'Login' | 'Inicial'>('Login');
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      return;
-    }
-
     let isMounted = true;
 
-    const carregarPerfilSessao = async (userId: string) => {
+    const inicializarSessao = async () => {
       try {
-        const perfilNuvem = await buscarPerfil(userId);
-        if (perfilNuvem && isMounted) {
-          useStore.getState().updatePerfil(perfilNuvem);
-        }
-      } catch (err) {
-        console.warn('Não foi possível sincronizar o perfil da sessão:', err);
-      }
-    };
+        await useStore.getState().hydrateStore();
 
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
+        if (!isSupabaseConfigured) {
+          await useStore.getState().switchContext(GUEST_CONTEXT_KEY);
+          if (isMounted) setInitialRoute('Login');
+          return;
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
         if (!isMounted) return;
         if (session?.user) {
           setInitialRoute('Inicial');
-          void carregarPerfilSessao(session.user.id);
+          void useStore.getState().syncWithCloud(session.user.id);
         } else {
+          await useStore.getState().switchContext(GUEST_CONTEXT_KEY);
           setInitialRoute('Login');
         }
-      })
-      .catch(() => {
+      } catch {
         if (isMounted) setInitialRoute('Login');
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) setSessionChecked(true);
-      });
+      }
+    };
+
+    void inicializarSessao();
+
+    if (!isSupabaseConfigured) {
+      return () => {
+        isMounted = false;
+      };
+    }
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        void carregarPerfilSessao(session.user.id);
+        void useStore.getState().syncWithCloud(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        void useStore.getState().logout();
         if (navigationRef.isReady()) {
           const current = navigationRef.getCurrentRoute()?.name;
           if (current !== 'Login' && current !== 'Cadastro') {
@@ -91,16 +96,26 @@ export default function AppNavigator() {
       }
     });
 
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        const ctx = useStore.getState().activeContextKey;
+        if (ctx && ctx !== GUEST_CONTEXT_KEY) {
+          void flushSyncQueue(ctx);
+        }
+      }
+    });
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      appStateSub.remove();
     };
   }, []);
 
   if (!sessionChecked) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FA' }}>
-        <ActivityIndicator size="large" color="#0056b3" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F7FA' }}>
+        <ActivityIndicator size="large" color="#0F3A60" />
       </View>
     );
   }
@@ -109,7 +124,7 @@ export default function AppNavigator() {
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F8F9FA' } }}
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F5F7FA' } }}
       >
         <Stack.Screen name="Login" component={TelaLogin} />
         <Stack.Screen name="Cadastro" component={TelaCadastro} />

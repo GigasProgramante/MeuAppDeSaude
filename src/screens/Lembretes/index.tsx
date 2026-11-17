@@ -119,7 +119,7 @@ export default function TelaLembretes({ navigation }: Props) {
   const [observacoesRemedio, setObservacoesRemedio] = useState('');
 
   // Formulário Lembrete - Ação
-  const [tipoAcao, setTipoAcao] = useState<'consulta' | 'exercicio' | 'agua' | 'pressao' | 'outro'>('agua');
+  const [tipoAcao, setTipoAcao] = useState<LembreteAcao['tipoAcao']>('agua');
   const [acaoPersonalizada, setAcaoPersonalizada] = useState('');
   const [horarioAcao, setHorarioAcao] = useState('');
 
@@ -204,26 +204,16 @@ export default function TelaLembretes({ navigation }: Props) {
       }
     };
 
-    let unsubHydration: (() => void) | undefined;
-    if (useStore.persist?.hasHydrated?.()) {
-      void migrarDadosLegados();
-    } else if (useStore.persist?.onFinishHydration) {
-      unsubHydration = useStore.persist.onFinishHydration(() => {
-        void migrarDadosLegados();
-      });
-    } else {
-      void migrarDadosLegados();
-    }
+    void useStore
+      .getState()
+      .hydrateStore()
+      .then(() => migrarDadosLegados());
 
     initializeNotifications().then((granted) => {
       if (!granted) {
         mostrarAlerta('Aviso', 'O aplicativo não possui permissão para disparar alertas sonoros.');
       }
     });
-
-    return () => {
-      if (unsubHydration) unsubHydration();
-    };
   }, []);
 
   const montarSchedule = (horario: string): NotificationSchedule => {
