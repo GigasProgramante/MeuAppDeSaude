@@ -1,31 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-  Alert,
-  Modal,
-  Platform,
-  TextInput,
-  Linking,
-} from 'react-native';
+import { Linking, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useStore } from '../../store/useStore';
-import { HorasSono, QualidadeSono } from '../../types';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
-import { AppButton, AppCard, AppModal, StatusBadge, useFeedback } from '../../components/ui';
-import { colors, spacing, radii } from '../../theme/tokens';
-import { styles } from './styles';
 import {
-  CONTATOS_CRISE,
-  ETAPAS_GROUNDING_54321,
-  FASES_RESPIRACAO_478,
-  FASES_RESPIRACAO_DIAFRAGMATICA,
-} from './regulacaoEmocional';
+  AppButton,
+  AppCard,
+  AppInput,
+  AppModal,
+  ChipSelector,
+  EmptyState,
+  ScreenShell,
+  SegmentedTabs,
+  StatusBadge,
+  useFeedback,
+} from '../../components/ui';
+import { useStore } from '../../store/useStore';
+import { colors, spacing } from '../../theme/tokens';
+import { HorasSono, QualidadeSono } from '../../types';
 import {
   GAD7_PERGUNTAS,
   OPCOES_TRIAGEM,
@@ -35,6 +28,13 @@ import {
   classificarGAD7,
   classificarPHQ9,
 } from './questionarios';
+import {
+  CONTATOS_CRISE,
+  ETAPAS_GROUNDING_54321,
+  FASES_RESPIRACAO_478,
+  FASES_RESPIRACAO_DIAFRAGMATICA,
+} from './regulacaoEmocional';
+import { styles } from './styles';
 
 type MoodScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Humor'>;
 
@@ -42,45 +42,89 @@ interface Props {
   navigation: MoodScreenNavigationProp;
 }
 
-const MOODS = [
-  { id: 'feliz', label: 'Feliz', emoji: '😊', color: '#10B981', bgColor: '#D1FAE5' },
-  { id: 'triste', label: 'Triste', emoji: '😢', color: '#3B82F6', bgColor: '#DBEAFE' },
-  { id: 'nervoso', label: 'Nervoso', emoji: '😠', color: '#EF4444', bgColor: '#FEE2E2' },
-  { id: 'ansioso', label: 'Ansioso', emoji: '😰', color: '#8B5CF6', bgColor: '#EDE9FE' },
+const MOODS: {
+  id: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bgColor: string;
+}[] = [
+  { id: 'feliz', label: 'Feliz', icon: 'happy-outline', color: '#15803D', bgColor: '#DCFCE7' },
+  { id: 'triste', label: 'Triste', icon: 'sad-outline', color: '#1D4ED8', bgColor: '#DBEAFE' },
+  { id: 'nervoso', label: 'Irritado', icon: 'alert-circle-outline', color: '#B91C1C', bgColor: '#FEE2E2' },
+  { id: 'ansioso', label: 'Ansioso', icon: 'pulse-outline', color: '#7C3AED', bgColor: '#EDE9FE' },
 ];
 
 const ACTIVITIES = [
-  'Trabalho', 'Família', 'Saúde', 'Sono',
-  'Relacionamentos', 'Estudos', 'Lazer', 'Finanças'
+  'Trabalho',
+  'Família',
+  'Saúde',
+  'Sono',
+  'Relacionamentos',
+  'Estudos',
+  'Lazer',
+  'Finanças',
 ];
 
 const HORAS_SONO: HorasSono[] = ['Menos de 5h', '5 a 6h', '7 a 8h', 'Mais de 8h'];
-const QUALIDADES_SONO: { id: QualidadeSono; emoji: string }[] = [
-  { id: 'Ruim', emoji: '😫' },
-  { id: 'Regular', emoji: '😐' },
-  { id: 'Boa', emoji: '😴' },
+const QUALIDADES_SONO: {
+  value: QualidadeSono;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { value: 'Ruim', label: 'Ruim', icon: 'thumbs-down-outline' },
+  { value: 'Regular', label: 'Regular', icon: 'remove-circle-outline' },
+  { value: 'Boa', label: 'Boa', icon: 'bed-outline' },
 ];
 const ANOTACAO_MAX = 500;
 
+const REGULACAO_TABS: {
+  key: 'respiracao' | 'grounding';
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { key: 'respiracao', label: 'Respiração Guiada', icon: 'leaf-outline' },
+  { key: 'grounding', label: 'Grounding 5-4-3-2-1', icon: 'hand-left-outline' },
+];
+
 export default function MoodScreen({ navigation }: Props) {
+  const { showAlert, showToast, confirm } = useFeedback();
+
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<string | null>(null);
   const [anotacao, setAnotacao] = useState('');
   const [horasSono, setHorasSono] = useState<HorasSono | null>(null);
   const [qualidadeSono, setQualidadeSono] = useState<QualidadeSono | null>(null);
 
-  // T6: Modais de Apoio Emocional Imediato (SOS) e Regulação (Respiração 4-7-8 / Grounding 5-4-3-2-1)
-  const { showAlert } = useFeedback();
   const [sosModalVisible, setSosModalVisible] = useState(false);
   const [regulacaoModalVisible, setRegulacaoModalVisible] = useState(false);
   const [abaRegulacao, setAbaRegulacao] = useState<'respiracao' | 'grounding'>('respiracao');
   const [tecnicaResp, setTecnicaResp] = useState<'478' | 'diafragmatica'>('478');
   const [respiracaoAtiva, setRespiracaoAtiva] = useState(false);
   const [faseIndex, setFaseIndex] = useState(0);
-  const [segundosRestantes, setSegundosRestantes] = useState(FASES_RESPIRACAO_478[0].duracaoSegundos);
+  const [segundosRestantes, setSegundosRestantes] = useState(
+    FASES_RESPIRACAO_478[0].duracaoSegundos
+  );
   const [ciclosConcluidos, setCiclosConcluidos] = useState(0);
   const [groundingMarcados, setGroundingMarcados] = useState<string[]>([]);
 
+  const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [answers, setAnswers] = useState<number[]>([]);
+  const [quizResult, setQuizResult] = useState<{
+    tipo: TipoQuestionario;
+    pontuacao: number;
+    maxPontuacao: number;
+    detalhes: ResultadoClassificacao;
+  } | null>(null);
+
+  const addHumor = useStore((state) => state.addHumor);
+  const humorHistorico = useStore((state) => state.humorHistorico);
+  const sinaisVitais = useStore((state) => state.sinaisVitais);
+  const avaliacoesPsicologia = useStore((state) => state.avaliacoesPsicologia);
+  const addAvaliacaoPsicologia = useStore((state) => state.addAvaliacaoPsicologia);
+
+  const areaAccent = colors.areas.psicologia;
   const fasesRespAtuais =
     tecnicaResp === '478' ? FASES_RESPIRACAO_478 : FASES_RESPIRACAO_DIAFRAGMATICA;
   const faseAtualResp = fasesRespAtuais[faseIndex] || fasesRespAtuais[0];
@@ -120,10 +164,10 @@ export default function MoodScreen({ navigation }: Props) {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        showAlert('Atendimento', `Disque diretamente para ${nome} no telefone informado.`);
+        showAlert('Atendimento', `Disque diretamente para ${nome} no número informado.`);
       }
     } catch {
-      showAlert('Atendimento', `Disque diretamente para ${nome} no telefone informado.`);
+      showAlert('Atendimento', `Disque diretamente para ${nome} no número informado.`);
     }
   };
 
@@ -131,31 +175,6 @@ export default function MoodScreen({ navigation }: Props) {
     setGroundingMarcados((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
-  };
-
-  // Estados dos Questionários PHQ-9 e GAD-7 (RF41)
-  const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [quizResult, setQuizResult] = useState<{
-    tipo: TipoQuestionario;
-    pontuacao: number;
-    maxPontuacao: number;
-    detalhes: ResultadoClassificacao;
-  } | null>(null);
-
-  const addHumor = useStore((state) => state.addHumor);
-  const humorHistorico = useStore((state) => state.humorHistorico);
-  const sinaisVitais = useStore((state) => state.sinaisVitais);
-  const avaliacoesPsicologia = useStore((state) => state.avaliacoesPsicologia);
-  const addAvaliacaoPsicologia = useStore((state) => state.addAvaliacaoPsicologia);
-
-  const mostrarAlerta = (titulo: string, mensagem: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-    } else {
-      Alert.alert(titulo, mensagem);
-    }
   };
 
   const salvarRegistro = (moodId: string, mensagem: string) => {
@@ -167,7 +186,7 @@ export default function MoodScreen({ navigation }: Props) {
       horasSono: horasSono ?? undefined,
       qualidadeSono: qualidadeSono ?? undefined,
     });
-    mostrarAlerta(selectedActivity ? 'Excelente!' : 'Tudo certo!', mensagem);
+    showToast(mensagem, 'success');
     setSelectedMood(null);
     setSelectedActivity(null);
     setAnotacao('');
@@ -177,37 +196,23 @@ export default function MoodScreen({ navigation }: Props) {
 
   const handleSave = () => {
     if (!selectedMood) {
-      mostrarAlerta('Ops!', 'Por favor, selecione como você está se sentindo hoje.');
+      showAlert('Atenção', 'Selecione como você está se sentindo hoje antes de salvar.');
       return;
     }
 
     if (!selectedActivity) {
-      const msgSemAtividade = 'Seu humor foi registrado com sucesso. 🌟';
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const confirmar = window.confirm(
-          'Faltou um detalhe\n\nSelecionar o que influenciou seu humor ajuda muito a equipe de psicologia a entender seu padrão de comportamento. Deseja salvar mesmo assim?'
-        );
-        if (confirmar) {
-          salvarRegistro(selectedMood, msgSemAtividade);
-        }
-        return;
-      }
-
-      Alert.alert(
-        'Faltou um detalhe',
-        'Selecionar o que influenciou seu humor ajuda muito a equipe de psicologia a entender seu padrão de comportamento. Deseja salvar mesmo assim?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Salvar sem atividade',
-            onPress: () => salvarRegistro(selectedMood, msgSemAtividade),
-          }
-        ]
-      );
+      confirm({
+        title: 'Faltou o fator de influência',
+        message:
+          'Selecionar o que influenciou seu humor ajuda a identificar padrões emocionais. Deseja salvar mesmo assim?',
+        confirmText: 'Salvar mesmo assim',
+        cancelText: 'Escolher fator',
+        onConfirm: () => salvarRegistro(selectedMood, 'Seu humor foi registrado com sucesso.'),
+      });
       return;
     }
 
-    salvarRegistro(selectedMood, 'Registro completo salvo com sucesso. Isso ajuda muito na sua análise comportamental. 🌟');
+    salvarRegistro(selectedMood, 'Registro emocional completo salvo com sucesso.');
   };
 
   const iniciarQuestionario = (tipo: TipoQuestionario) => {
@@ -241,7 +246,7 @@ export default function MoodScreen({ navigation }: Props) {
   const finalizarQuestionario = () => {
     if (!activeQuiz) return;
     if (answers.some((a) => a < 0)) {
-      mostrarAlerta('Atenção', 'Responda todas as perguntas para calcular o escore.');
+      showAlert('Atenção', 'Responda todas as perguntas para calcular o escore.');
       return;
     }
 
@@ -269,11 +274,8 @@ export default function MoodScreen({ navigation }: Props) {
     });
   };
 
-  const getMoodConfig = (moodId: string) => {
-    return MOODS.find(m => m.id === moodId) || MOODS[0];
-  };
+  const getMoodConfig = (moodId: string) => MOODS.find((m) => m.id === moodId) || MOODS[0];
 
-  // Frequência de humores nos últimos 7 dias (RF37)
   const moodFrequencyData: ChartPoint[] = useMemo(() => {
     const agora = Date.now();
     const seteDiasMs = 7 * 24 * 60 * 60 * 1000;
@@ -282,14 +284,12 @@ export default function MoodScreen({ navigation }: Props) {
       return !isNaN(t) && agora - t <= seteDiasMs;
     });
 
-    if (recentes.length === 0) {
-      return [];
-    }
+    if (recentes.length === 0) return [];
 
     return MOODS.map((m) => {
       const count = recentes.filter((h) => h.moodId === m.id).length;
       return {
-        label: `${m.emoji} ${m.label}`,
+        label: m.label,
         value: count,
         displayValue: `${count}x`,
         color: m.color,
@@ -297,467 +297,420 @@ export default function MoodScreen({ navigation }: Props) {
     });
   }, [humorHistorico]);
 
-  // Merge histories and sort desc
   const mergedHistory = [
-    ...(humorHistorico || []).map(h => ({ type: 'humor' as const, data: h.data, item: h })),
-    ...(avaliacoesPsicologia || []).map(a => ({ type: 'avaliacao' as const, data: a.data, item: a })),
-    ...(sinaisVitais || []).map(s => ({ type: 'sinal' as const, data: s.data, item: s }))
+    ...(humorHistorico || []).map((h) => ({ type: 'humor' as const, data: h.data, item: h })),
+    ...(avaliacoesPsicologia || []).map((a) => ({ type: 'avaliacao' as const, data: a.data, item: a })),
+    ...(sinaisVitais || []).map((s) => ({ type: 'sinal' as const, data: s.data, item: s })),
   ].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        <View style={styles.header}>
-          <Text style={styles.title}>Saúde Mental (Psicologia & Humor)</Text>
-          <Text style={styles.subtitle}>Acompanhe seu bem-estar psicológico e físico</Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              minWidth: 150,
+    <ScreenShell
+      title="Saúde Mental"
+      subtitle="Acompanhe seu bem-estar emocional, sono e triagens."
+      areaBadge={{ label: 'Psicologia', color: areaAccent.color, bg: areaAccent.bg }}
+      onBack={() => navigation.goBack()}
+    >
+      <View style={styles.quickHelpRow}>
+        <TouchableOpacity
+          style={[
+            styles.quickHelpBtn,
+            {
               backgroundColor: colors.semantic.dangerBg,
-              borderWidth: 1,
               borderColor: colors.semantic.dangerBorder,
-              borderRadius: radii.md,
-              padding: spacing.md,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}
-            onPress={() => setSosModalVisible(true)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="call" size={20} color={colors.semantic.danger} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '700', color: colors.semantic.danger, fontSize: 14 }}>
-                Preciso de ajuda agora
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.text.secondary }}>CVV 188 · Apoio imediato</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              minWidth: 150,
-              backgroundColor: colors.areas.psicologia.bg,
-              borderWidth: 1,
-              borderColor: colors.areas.psicologia.color,
-              borderRadius: radii.md,
-              padding: spacing.md,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}
-            onPress={() => setRegulacaoModalVisible(true)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="leaf" size={20} color={colors.areas.psicologia.color} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '700', color: colors.areas.psicologia.color, fontSize: 14 }}>
-                Respiração & Grounding
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.text.secondary }}>4-7-8 · Técnica 5-4-3-2-1</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.moodGrid}>
-          {MOODS.map((mood) => {
-            const isSelected = selectedMood === mood.id;
-
-            return (
-              <TouchableOpacity
-                key={mood.id}
-                style={[
-                  styles.moodCard,
-                  isSelected && {
-                    borderColor: mood.color,
-                    backgroundColor: '#FFFFFF',
-                    shadowColor: mood.color,
-                    shadowOpacity: 0.15,
-                    elevation: 8,
-                    transform: [{ scale: 1.02 }]
-                  }
-                ]}
-                onPress={() => setSelectedMood(mood.id)}
-                activeOpacity={0.8}
-              >
-                <View style={[
-                  styles.emojiContainer,
-                  isSelected ? { backgroundColor: mood.bgColor } : {}
-                ]}>
-                  <Text style={styles.emoji}>{mood.emoji}</Text>
-                </View>
-                <Text style={[
-                  styles.moodLabel,
-                  isSelected && { color: mood.color, fontWeight: '700' }
-                ]}>{mood.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.activityContainer}>
-          <Text style={styles.sectionTitle}>O que mais influenciou hoje? (opcional)</Text>
-          <View style={styles.activityScroll}>
-            {ACTIVITIES.map((activity) => (
-              <TouchableOpacity
-                key={activity}
-                style={[
-                  styles.activityChip,
-                  selectedActivity === activity && styles.activityChipSelected
-                ]}
-                onPress={() => setSelectedActivity(selectedActivity === activity ? null : activity)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.activityChipText,
-                  selectedActivity === activity && styles.activityChipTextSelected
-                ]}>
-                  {activity}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            },
+          ]}
+          onPress={() => setSosModalVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="call" size={20} color={colors.semantic.danger} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.quickHelpTitle, { color: colors.semantic.danger }]}>
+              Preciso de ajuda agora
+            </Text>
+            <Text style={styles.quickHelpSub}>CVV 188 · Apoio imediato</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        <View style={styles.activityContainer}>
-          <Text style={styles.sectionTitle}>🌙 Como você dormiu? (opcional)</Text>
-          <Text style={styles.fieldLabel}>Horas de sono</Text>
-          <View style={[styles.activityScroll, styles.fieldGroup]} accessibilityRole="radiogroup" accessibilityLabel="Horas de sono">
-            {HORAS_SONO.map((horas) => {
-              const ativo = horasSono === horas;
+        <TouchableOpacity
+          style={[
+            styles.quickHelpBtn,
+            { backgroundColor: areaAccent.bg, borderColor: areaAccent.color },
+          ]}
+          onPress={() => setRegulacaoModalVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="leaf" size={20} color={areaAccent.color} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.quickHelpTitle, { color: areaAccent.color }]}>
+              Respiração & Grounding
+            </Text>
+            <Text style={styles.quickHelpSub}>4-7-8 · Técnica 5-4-3-2-1</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.sectionCardGap}>
+        <AppCard variant="elevated">
+          <Text style={styles.sectionTitle}>Como você está se sentindo hoje?</Text>
+          <Text style={styles.sectionSub}>Toque no estado emocional que melhor representa seu momento.</Text>
+
+          <View style={styles.moodGrid}>
+            {MOODS.map((mood) => {
+              const isSelected = selectedMood === mood.id;
               return (
                 <TouchableOpacity
-                  key={horas}
-                  style={[styles.activityChip, ativo && styles.activityChipSelected]}
-                  onPress={() => setHorasSono(ativo ? null : horas)}
-                  activeOpacity={0.7}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: ativo }}
+                  key={mood.id}
+                  style={[
+                    styles.moodCard,
+                    isSelected && { borderColor: mood.color, backgroundColor: colors.surface.card },
+                  ]}
+                  onPress={() => setSelectedMood(mood.id)}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>{horas}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={styles.fieldLabel}>Qualidade do sono</Text>
-          <View style={styles.activityScroll} accessibilityRole="radiogroup" accessibilityLabel="Qualidade do sono">
-            {QUALIDADES_SONO.map((q) => {
-              const ativo = qualidadeSono === q.id;
-              return (
-                <TouchableOpacity
-                  key={q.id}
-                  style={[styles.activityChip, ativo && styles.activityChipSelected]}
-                  onPress={() => setQualidadeSono(ativo ? null : q.id)}
-                  activeOpacity={0.7}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: ativo }}
-                  accessibilityLabel={`Sono ${q.id}`}
-                >
-                  <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>
-                    {q.emoji} {q.id}
+                  <View style={[styles.moodIconCircle, { backgroundColor: mood.bgColor }]}>
+                    <Ionicons name={mood.icon} size={26} color={mood.color} />
+                  </View>
+                  <Text style={[styles.moodLabel, isSelected && { color: mood.color }]}>
+                    {mood.label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-        </View>
 
-        <View style={styles.activityContainer}>
-          <Text style={styles.sectionTitle}>📝 Como foi seu dia? (opcional)</Text>
-          <TextInput
-            style={styles.diaryInput}
-            placeholder="Escreva livremente sobre seu dia, pensamentos ou sentimentos (opcional)"
-            placeholderTextColor="#6B7280"
+          <ChipSelector
+            label="O que mais influenciou hoje? (opcional)"
+            options={ACTIVITIES}
+            selected={selectedActivity}
+            onSelect={(act) => setSelectedActivity(selectedActivity === act ? null : act)}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <ChipSelector
+            label="Horas de sono (opcional)"
+            options={HORAS_SONO}
+            selected={horasSono}
+            onSelect={(h) => setHorasSono(horasSono === h ? null : h)}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <ChipSelector
+            label="Qualidade do sono (opcional)"
+            options={QUALIDADES_SONO}
+            selected={qualidadeSono}
+            onSelect={(q) => setQualidadeSono(qualidadeSono === q ? null : q)}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <AppInput
+            label="Como foi seu dia? (opcional)"
+            placeholder="Escreva livremente sobre seu dia, pensamentos ou sentimentos"
             value={anotacao}
             onChangeText={setAnotacao}
             multiline
             maxLength={ANOTACAO_MAX}
-            textAlignVertical="top"
-            accessibilityLabel="Diário: como foi seu dia?"
           />
-          <Text style={styles.diaryCounter}>{anotacao.length}/{ANOTACAO_MAX}</Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.saveButton, !selectedMood && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={!selectedMood}
-          accessibilityState={{ disabled: !selectedMood }}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.saveButtonText, !selectedMood && { color: '#4B5563' }]}>
-            {selectedMood ? 'Salvar Registro Psicológico' : 'Selecione um humor acima para salvar'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Triagem Clínica: PHQ-9 e GAD-7 (RF41) */}
-        <View style={styles.screeningSection}>
-          <Text style={styles.sectionTitle}>Questionários de Triagem (RF41)</Text>
-          <Text style={styles.screeningSubtitle}>
-            Avaliações validadas para acompanhar sinais de depressão e ansiedade com resultado orientativo.
+          <Text style={styles.counterText}>
+            {anotacao.length}/{ANOTACAO_MAX}
           </Text>
 
+          <AppButton
+            title={selectedMood ? 'Salvar Registro Psicológico' : 'Selecione um humor acima'}
+            icon="checkmark-circle-outline"
+            variant="primary"
+            disabled={!selectedMood}
+            onPress={handleSave}
+          />
+        </AppCard>
+
+        <AppCard variant="default">
+          <Text style={styles.sectionTitle}>Questionários de Triagem</Text>
+          <Text style={styles.sectionSub}>
+            Avaliações orientativas para acompanhar sinais de depressão e ansiedade.
+          </Text>
           <View style={styles.screeningRow}>
-            <TouchableOpacity
-              style={styles.screeningCard}
-              onPress={() => iniciarQuestionario('PHQ-9')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.screeningBadge, { backgroundColor: '#DBEAFE' }]}>
-                <Text style={[styles.screeningBadgeText, { color: '#1D4ED8' }]}>9 PERGUNTAS</Text>
-              </View>
-              <Text style={styles.screeningCardTitle}>Teste PHQ-9</Text>
-              <Text style={styles.screeningCardDesc}>Triagem orientativa para sintomas de depressão e humor.</Text>
-              <Text style={styles.screeningCardAction}>Iniciar PHQ-9 →</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.screeningCard}
-              onPress={() => iniciarQuestionario('GAD-7')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.screeningBadge, { backgroundColor: '#EDE9FE' }]}>
-                <Text style={[styles.screeningBadgeText, { color: '#6D28D9' }]}>7 PERGUNTAS</Text>
-              </View>
-              <Text style={styles.screeningCardTitle}>Teste GAD-7</Text>
-              <Text style={styles.screeningCardDesc}>Triagem orientativa para sintomas de ansiedade.</Text>
-              <Text style={styles.screeningCardAction}>Iniciar GAD-7 →</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Gráfico Semanal de Frequência de Humores (RF37) */}
-        <BarChartCard
-          title="📊 Frequência de Humores na Semana (RF37)"
-          subtitle="Quantas vezes cada estado emocional foi registrado nos últimos 7 dias."
-          data={moodFrequencyData}
-          emptyMessage="Registre seu humor durante os últimos 7 dias para acompanhar a distribuição emocional da semana."
-        />
-
-        <View style={styles.historyContainer}>
-          <Text style={styles.historyTitle}>Linha do Tempo (Humor, Triagens & Sinais)</Text>
-
-          {mergedHistory.length === 0 ? (
-            <Text style={styles.emptyHistory}>Você ainda não possui registros.</Text>
-          ) : (
-            mergedHistory.slice(0, 10).map((record) => {
-              if (record.type === 'humor') {
-                const h = record.item;
-                const moodConfig = getMoodConfig(h.moodId);
-                return (
-                  <View key={`humor-${h.id}`} style={styles.historyCard}>
-                    <View style={[styles.historyEmojiContainer, { backgroundColor: moodConfig.bgColor }]}>
-                      <Text style={styles.historyEmoji}>{moodConfig.emoji}</Text>
-                    </View>
-                    <View style={styles.historyContent}>
-                      <Text style={styles.historyMoodName}>{moodConfig.label}</Text>
-                      <Text style={styles.historyDate}>
-                        {new Date(h.data).toLocaleDateString('pt-BR')} às {new Date(h.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                      {h.activity ? (
-                        <Text style={styles.historyActivity}>Influência: {h.activity}</Text>
-                      ) : null}
-                      {h.horasSono || h.qualidadeSono ? (
-                        <Text style={styles.historyActivity}>
-                          🌙 Sono: {[h.horasSono, h.qualidadeSono && `qualidade ${h.qualidadeSono.toLowerCase()}`].filter(Boolean).join(' · ')}
-                        </Text>
-                      ) : null}
-                      {h.anotacao ? (
-                        <Text style={styles.historyNote}>“{h.anotacao}”</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                );
-              } else if (record.type === 'avaliacao') {
-                const a = record.item;
-                return (
-                  <View key={`aval-${a.id}`} style={styles.historyCard}>
-                    <View style={[styles.historyEmojiContainer, { backgroundColor: '#EDE9FE' }]}>
-                      <Text style={styles.historyEmoji}>📋</Text>
-                    </View>
-                    <View style={styles.historyContent}>
-                      <Text style={styles.historyMoodName}>
-                        {a.tipo}: {a.pontuacao}/{a.maxPontuacao} pts — {a.classificacao}
-                      </Text>
-                      <Text style={styles.historyDate}>
-                        {new Date(a.data).toLocaleDateString('pt-BR')} às {new Date(a.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                      <Text style={styles.historyActivity}>{a.orientacao}</Text>
-                    </View>
-                  </View>
-                );
-              } else {
-                const s = record.item;
-                return (
-                  <View key={`sinal-${s.id}`} style={styles.historyCard}>
-                    <View style={[styles.historyEmojiContainer, { backgroundColor: '#F0F0F5' }]}>
-                      <Text style={styles.historyEmoji}>🩺</Text>
-                    </View>
-                    <View style={styles.historyContent}>
-                      <Text style={styles.historyMoodName}>Sinais Vitais</Text>
-                      <Text style={styles.historyDate}>
-                        {new Date(s.data).toLocaleDateString('pt-BR')} às {new Date(s.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                      <Text style={styles.historyActivity}>
-                        {s.bpm ? `❤️ ${s.bpm} bpm` : ''}
-                        {s.glicose ? `${s.bpm ? ' | ' : ''}🩸 ${s.glicose} mg/dL` : ''}
-                        {s.pressao ? `${s.bpm || s.glicose ? ' | ' : ''}🩺 ${s.pressao}` : ''}
-                        {s.oxigenacao ? ` | 🫁 ${s.oxigenacao}%` : ''}
-                        {s.temperatura ? ` | 🌡️ ${s.temperatura}°C` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              }
-            })
-          )}
-        </View>
-
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-
-      </ScrollView>
-
-      {/* Modal Questionário PHQ-9 / GAD-7 */}
-      <Modal
-        visible={activeQuiz !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={fecharQuestionario}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>
-                {activeQuiz === 'PHQ-9' ? 'Questionário PHQ-9 (Depressão)' : 'Questionário GAD-7 (Ansiedade)'}
-              </Text>
-              <TouchableOpacity style={styles.modalCloseBtn} onPress={fecharQuestionario}>
-                <Text style={styles.modalCloseText}>Fechar</Text>
-              </TouchableOpacity>
+            <View style={styles.screeningCol}>
+              <AppCard variant="outlined">
+                <StatusBadge label="9 perguntas" tone="info" />
+                <Text style={styles.screeningTitle}>Teste PHQ-9</Text>
+                <Text style={styles.screeningDesc}>
+                  Triagem orientativa de sintomas depressivos nas últimas 2 semanas.
+                </Text>
+                <AppButton
+                  title="Iniciar PHQ-9"
+                  icon="play-outline"
+                  variant="secondary"
+                  compact
+                  onPress={() => iniciarQuestionario('PHQ-9')}
+                />
+              </AppCard>
             </View>
 
-            {quizResult === null ? (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${((stepIndex + 1) / perguntasAtuais.length) * 100}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.stepCounter}>
-                  Pergunta {stepIndex + 1} de {perguntasAtuais.length}
+            <View style={styles.screeningCol}>
+              <AppCard variant="outlined">
+                <StatusBadge label="7 perguntas" tone="info" />
+                <Text style={styles.screeningTitle}>Teste GAD-7</Text>
+                <Text style={styles.screeningDesc}>
+                  Triagem orientativa de sinais de ansiedade nas últimas 2 semanas.
                 </Text>
+                <AppButton
+                  title="Iniciar GAD-7"
+                  icon="play-outline"
+                  variant="secondary"
+                  compact
+                  onPress={() => iniciarQuestionario('GAD-7')}
+                />
+              </AppCard>
+            </View>
+          </View>
+        </AppCard>
 
-                <Text style={styles.questionPrompt}>
-                  Nas últimas 2 semanas, com que frequência você foi incomodado(a) por:
-                </Text>
-                <Text style={styles.questionText}>{perguntasAtuais[stepIndex]}</Text>
+        <BarChartCard
+          title="Frequência de Humores na Semana"
+          subtitle="Quantas vezes cada estado emocional foi registrado nos últimos 7 dias."
+          data={moodFrequencyData}
+          emptyMessage="Registre seu humor durante os últimos 7 dias para acompanhar a distribuição emocional."
+        />
 
-                {OPCOES_TRIAGEM.map((op) => {
-                  const selected = respostaAtual === op.valor;
+        <AppCard variant="default">
+          <Text style={styles.sectionTitle}>Linha do Tempo</Text>
+          {mergedHistory.length === 0 ? (
+            <EmptyState
+              icon="journal-outline"
+              title="Nenhum registro ainda"
+              description="Seus registros de humor, triagens psicológicas e sinais vitais aparecerão aqui."
+            />
+          ) : (
+            <View style={styles.historyList}>
+              {mergedHistory.slice(0, 10).map((record) => {
+                if (record.type === 'humor') {
+                  const h = record.item;
+                  const moodConfig = getMoodConfig(h.moodId);
                   return (
-                    <TouchableOpacity
-                      key={op.valor}
-                      style={[styles.optionButton, selected && styles.optionButtonSelected]}
-                      onPress={() => selecionarResposta(op.valor)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                        {op.label}
-                      </Text>
-                    </TouchableOpacity>
+                    <View key={`humor-${h.id}`} style={styles.historyRow}>
+                      <View style={[styles.historyIconBadge, { backgroundColor: moodConfig.bgColor }]}>
+                        <Ionicons name={moodConfig.icon} size={22} color={moodConfig.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.historyTitle}>{moodConfig.label}</Text>
+                        <Text style={styles.historyDate}>
+                          {new Date(h.data).toLocaleDateString('pt-BR')} às{' '}
+                          {new Date(h.data).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                        {h.activity ? (
+                          <Text style={styles.historyDetail}>Influência: {h.activity}</Text>
+                        ) : null}
+                        {(h.horasSono || h.qualidadeSono) && (
+                          <Text style={styles.historyDetail}>
+                            Sono:{' '}
+                            {[
+                              h.horasSono,
+                              h.qualidadeSono && `qualidade ${h.qualidadeSono.toLowerCase()}`,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </Text>
+                        )}
+                        {h.anotacao ? <Text style={styles.historyNote}>"{h.anotacao}"</Text> : null}
+                      </View>
+                    </View>
                   );
-                })}
+                }
 
-                <View style={styles.modalNavRow}>
-                  {stepIndex > 0 && (
-                    <TouchableOpacity
-                      style={styles.modalBackStepBtn}
-                      onPress={() => setStepIndex(stepIndex - 1)}
-                    >
-                      <Text style={styles.modalBackStepText}>Anterior</Text>
-                    </TouchableOpacity>
-                  )}
+                if (record.type === 'avaliacao') {
+                  const a = record.item;
+                  return (
+                    <View key={`aval-${a.id}`} style={styles.historyRow}>
+                      <View
+                        style={[styles.historyIconBadge, { backgroundColor: areaAccent.bg }]}
+                      >
+                        <Ionicons name="clipboard-outline" size={20} color={areaAccent.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.historyTitle}>
+                          {a.tipo}: {a.pontuacao}/{a.maxPontuacao} pts — {a.classificacao}
+                        </Text>
+                        <Text style={styles.historyDate}>
+                          {new Date(a.data).toLocaleDateString('pt-BR')} às{' '}
+                          {new Date(a.data).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                        <Text style={styles.historyDetail}>{a.orientacao}</Text>
+                      </View>
+                    </View>
+                  );
+                }
 
-                  {stepIndex < perguntasAtuais.length - 1 ? (
-                    <TouchableOpacity
-                      style={[styles.modalNextBtn, respostaAtual < 0 && { opacity: 0.5 }]}
-                      onPress={() => {
-                        if (respostaAtual < 0) {
-                          mostrarAlerta('Atenção', 'Selecione uma opção para avançar.');
-                          return;
-                        }
-                        setStepIndex(stepIndex + 1);
-                      }}
+                const s = record.item;
+                return (
+                  <View key={`sinal-${s.id}`} style={styles.historyRow}>
+                    <View
+                      style={[
+                        styles.historyIconBadge,
+                        { backgroundColor: colors.areas.enfermagem.bg },
+                      ]}
                     >
-                      <Text style={styles.modalNextBtnText}>Próxima</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.modalNextBtn, { backgroundColor: '#10B981' }, respostaAtual < 0 && { opacity: 0.5 }]}
-                      onPress={finalizarQuestionario}
-                    >
-                      <Text style={styles.modalNextBtnText}>Calcular Resultado</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </ScrollView>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={[styles.resultBox, { backgroundColor: quizResult.detalhes.corFundo }]}>
-                  <Text style={[styles.resultScore, { color: quizResult.detalhes.cor }]}>
-                    {quizResult.pontuacao} / {quizResult.maxPontuacao}
-                  </Text>
-                  <Text style={[styles.resultClass, { color: quizResult.detalhes.cor }]}>
-                    {quizResult.detalhes.classificacao}
-                  </Text>
-                  <Text style={styles.resultOrientation}>{quizResult.detalhes.orientacao}</Text>
-                </View>
-
-                {quizResult.detalhes.alertaCritico && (
-                  <View style={styles.crisisAlertBox}>
-                    <Text style={styles.crisisAlertTitle}>Apoio Emocional Imediato</Text>
-                    <Text style={styles.crisisAlertText}>
-                      Você não precisa passar por isso sozinho(a). Ligue gratuitamente para o CVV pelo número 188
-                      (atendimento 24h) ou procure o CAPS / pronto-atendimento mais próximo.
-                    </Text>
-                    <View style={{ marginTop: 10 }}>
-                      <AppButton
-                        title="Abrir contatos de apoio (188 / 192)"
-                        variant="danger"
-                        icon="call"
-                        onPress={() => {
-                          fecharQuestionario();
-                          setSosModalVisible(true);
-                        }}
-                      />
+                      <Ionicons name="pulse-outline" size={20} color={colors.areas.enfermagem.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyTitle}>Sinais Vitais</Text>
+                      <Text style={styles.historyDate}>
+                        {new Date(s.data).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(s.data).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                      <Text style={styles.historyDetail}>
+                        {[
+                          s.bpm ? `FC ${s.bpm} bpm` : '',
+                          s.glicose ? `Glicose ${s.glicose} mg/dL` : '',
+                          s.pressao ? `PA ${s.pressao} mmHg` : '',
+                          s.oxigenacao ? `SpO₂ ${s.oxigenacao}%` : '',
+                          s.temperatura ? `Temp ${s.temperatura}°C` : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
                     </View>
                   </View>
-                )}
+                );
+              })}
+            </View>
+          )}
+        </AppCard>
+      </View>
 
-                <Text style={styles.resultDisclaimer}>
-                  Este questionário é uma ferramenta de triagem orientativa e não substitui diagnóstico médico ou
-                  psicológico. O resultado foi salvo no seu histórico local.
-                </Text>
+      <AppModal
+        visible={activeQuiz !== null}
+        title={
+          activeQuiz === 'PHQ-9'
+            ? 'Questionário PHQ-9 (Depressão)'
+            : 'Questionário GAD-7 (Ansiedade)'
+        }
+        onClose={fecharQuestionario}
+        footer={
+          quizResult === null ? (
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              {stepIndex > 0 && (
+                <AppButton
+                  title="Anterior"
+                  variant="outline"
+                  style={{ flex: 1 }}
+                  onPress={() => setStepIndex(stepIndex - 1)}
+                />
+              )}
+              {stepIndex < perguntasAtuais.length - 1 ? (
+                <AppButton
+                  title="Próxima"
+                  variant="primary"
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    if (respostaAtual < 0) {
+                      showAlert('Atenção', 'Selecione uma opção para avançar.');
+                      return;
+                    }
+                    setStepIndex(stepIndex + 1);
+                  }}
+                />
+              ) : (
+                <AppButton
+                  title="Calcular Resultado"
+                  variant="primary"
+                  style={{ flex: 1 }}
+                  onPress={finalizarQuestionario}
+                />
+              )}
+            </View>
+          ) : (
+            <AppButton
+              title="Concluir e Ver Histórico"
+              variant="primary"
+              onPress={fecharQuestionario}
+            />
+          )
+        }
+      >
+        {quizResult === null ? (
+          <View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${((stepIndex + 1) / perguntasAtuais.length) * 100}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.stepCounter}>
+              Pergunta {stepIndex + 1} de {perguntasAtuais.length}
+            </Text>
+            <Text style={styles.questionPrompt}>
+              Nas últimas 2 semanas, com que frequência você foi incomodado(a) por:
+            </Text>
+            <Text style={styles.questionText}>{perguntasAtuais[stepIndex]}</Text>
 
-                <TouchableOpacity style={styles.modalNextBtn} onPress={fecharQuestionario}>
-                  <Text style={styles.modalNextBtnText}>Concluir e Ver Histórico</Text>
+            {OPCOES_TRIAGEM.map((op) => {
+              const selected = respostaAtual === op.valor;
+              return (
+                <TouchableOpacity
+                  key={op.valor}
+                  style={[styles.optionButton, selected && styles.optionButtonSelected]}
+                  onPress={() => selecionarResposta(op.valor)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+                    {op.label}
+                  </Text>
                 </TouchableOpacity>
-              </ScrollView>
-            )}
+              );
+            })}
           </View>
-        </View>
-      </Modal>
+        ) : (
+          <View style={{ gap: spacing.md }}>
+            <View style={[styles.resultBox, { backgroundColor: quizResult.detalhes.corFundo }]}>
+              <Text style={[styles.resultScore, { color: quizResult.detalhes.cor }]}>
+                {quizResult.pontuacao} / {quizResult.maxPontuacao}
+              </Text>
+              <Text style={[styles.resultClass, { color: quizResult.detalhes.cor }]}>
+                {quizResult.detalhes.classificacao}
+              </Text>
+              <Text style={styles.resultOrientation}>{quizResult.detalhes.orientacao}</Text>
+            </View>
+
+            {quizResult.detalhes.alertaCritico && (
+              <AppCard variant="alert" tone="danger">
+                <Text style={[styles.sectionTitle, { color: colors.semantic.danger }]}>
+                  Apoio Emocional Imediato
+                </Text>
+                <Text style={styles.sectionSub}>
+                  Você não precisa passar por isso sozinho(a). Ligue gratuitamente para o CVV (188, 24h) ou procure o CAPS mais próximo.
+                </Text>
+                <AppButton
+                  title="Abrir contatos de apoio (188 / 192)"
+                  variant="danger"
+                  icon="call"
+                  onPress={() => {
+                    fecharQuestionario();
+                    setSosModalVisible(true);
+                  }}
+                />
+              </AppCard>
+            )}
+
+            <Text style={styles.resultDisclaimer}>
+              Este questionário é orientativo e não substitui diagnóstico médico ou psicológico.
+            </Text>
+          </View>
+        )}
+      </AppModal>
 
       <AppModal
         visible={sosModalVisible}
@@ -775,7 +728,15 @@ export default function MoodScreen({ navigation }: Props) {
               variant={contato.destaque ? 'alert' : 'outlined'}
               tone={contato.destaque ? 'danger' : 'info'}
             >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 4,
+                  gap: spacing.sm,
+                }}
+              >
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary, flex: 1 }}>
                   {contato.nome}
                 </Text>
@@ -787,7 +748,7 @@ export default function MoodScreen({ navigation }: Props) {
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text.secondary, marginBottom: 4 }}>
                 {contato.disponibilidade}
               </Text>
-              <Text style={{ fontSize: 14, color: colors.text.secondary, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14, color: colors.text.secondary, marginBottom: spacing.sm }}>
                 {contato.descricao}
               </Text>
               <AppButton
@@ -808,52 +769,53 @@ export default function MoodScreen({ navigation }: Props) {
         subtitle="Exercícios práticos para acalmar corpo e mente no momento presente."
         onClose={() => setRegulacaoModalVisible(false)}
         footer={
-          <AppButton title="Fechar" variant="outline" onPress={() => setRegulacaoModalVisible(false)} />
+          <AppButton
+            title="Fechar"
+            variant="outline"
+            onPress={() => setRegulacaoModalVisible(false)}
+          />
         }
       >
         <View style={{ gap: spacing.md }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <AppButton
-              title="Respiração Guiada"
-              variant={abaRegulacao === 'respiracao' ? 'primary' : 'outline'}
-              compact
-              style={{ flex: 1 }}
-              onPress={() => setAbaRegulacao('respiracao')}
-            />
-            <AppButton
-              title="Grounding 5-4-3-2-1"
-              variant={abaRegulacao === 'grounding' ? 'primary' : 'outline'}
-              compact
-              style={{ flex: 1 }}
-              onPress={() => setAbaRegulacao('grounding')}
-            />
-          </View>
+          <SegmentedTabs
+            tabs={REGULACAO_TABS}
+            activeKey={abaRegulacao}
+            onChange={setAbaRegulacao}
+          />
 
           {abaRegulacao === 'respiracao' ? (
             <View style={{ gap: spacing.md }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <AppButton
-                  title="Técnica 4-7-8"
-                  variant={tecnicaResp === '478' ? 'secondary' : 'ghost'}
-                  compact
-                  style={{ flex: 1 }}
-                  onPress={() => setTecnicaResp('478')}
-                />
-                <AppButton
-                  title="Diafragmática (4-2-6)"
-                  variant={tecnicaResp === 'diafragmatica' ? 'secondary' : 'ghost'}
-                  compact
-                  style={{ flex: 1 }}
-                  onPress={() => setTecnicaResp('diafragmatica')}
-                />
-              </View>
+              <ChipSelector
+                options={[
+                  { value: '478', label: 'Técnica 4-7-8' },
+                  { value: 'diafragmatica', label: 'Diafragmática (4-2-6)' },
+                ]}
+                selected={tecnicaResp}
+                onSelect={setTecnicaResp}
+                accentColor={areaAccent.color}
+                accentBg={areaAccent.bg}
+              />
 
               <AppCard variant="outlined" style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
                 <StatusBadge label={`Ciclos concluídos: ${ciclosConcluidos}`} tone="info" />
-                <Text style={{ fontSize: 22, fontWeight: '800', color: colors.areas.psicologia.color, marginTop: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 22,
+                    fontWeight: '800',
+                    color: areaAccent.color,
+                    marginTop: 12,
+                  }}
+                >
                   {faseAtualResp.label}
                 </Text>
-                <Text style={{ fontSize: 44, fontWeight: '800', color: colors.text.primary, marginVertical: 6 }}>
+                <Text
+                  style={{
+                    fontSize: 44,
+                    fontWeight: '800',
+                    color: colors.text.primary,
+                    marginVertical: 6,
+                  }}
+                >
                   {segundosRestantes}s
                 </Text>
                 <Text style={{ fontSize: 14, color: colors.text.secondary, textAlign: 'center' }}>
@@ -883,8 +845,8 @@ export default function MoodScreen({ navigation }: Props) {
             </View>
           ) : (
             <View style={{ gap: spacing.sm }}>
-              <Text style={{ fontSize: 14, color: colors.text.secondary }}>
-                Marque cada sentido conforme você observa o ambiente com calma ({groundingMarcados.length}/5):
+              <Text style={styles.sectionSub}>
+                Marque cada sentido conforme você observa o ambiente ({groundingMarcados.length}/5):
               </Text>
               {ETAPAS_GROUNDING_54321.map((etapa) => {
                 const marcado = groundingMarcados.includes(etapa.id);
@@ -894,10 +856,7 @@ export default function MoodScreen({ navigation }: Props) {
                     onPress={() => toggleGrounding(etapa.id)}
                     activeOpacity={0.8}
                   >
-                    <AppCard
-                      variant={marcado ? 'alert' : 'outlined'}
-                      tone={marcado ? 'success' : 'info'}
-                    >
+                    <AppCard variant={marcado ? 'alert' : 'outlined'} tone={marcado ? 'success' : 'info'}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                         <Ionicons
                           name={marcado ? 'checkmark-circle' : 'ellipse-outline'}
@@ -911,7 +870,7 @@ export default function MoodScreen({ navigation }: Props) {
                           <Text style={{ fontSize: 13, color: colors.text.secondary, marginTop: 2 }}>
                             {etapa.descricao}
                           </Text>
-                          <Text style={{ fontSize: 12, color: colors.text.muted, marginTop: 2 }}>
+                          <Text style={{ fontSize: 13, color: colors.text.muted, marginTop: 2 }}>
                             {etapa.exemplos}
                           </Text>
                         </View>
@@ -932,6 +891,6 @@ export default function MoodScreen({ navigation }: Props) {
           )}
         </View>
       </AppModal>
-    </SafeAreaView>
+    </ScreenShell>
   );
 }

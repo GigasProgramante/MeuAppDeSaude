@@ -1,31 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  SafeAreaView,
-  FlatList,
-  Alert,
-  Modal,
-  TextInput,
-  ScrollView,
-  Platform,
-} from 'react-native';
+import { Platform, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import {
+  AppButton,
+  AppCard,
+  AppInput,
+  AppModal,
+  ChipSelector,
+  EmptyState,
+  ScreenShell,
+  SegmentedTabs,
+  StatusBadge,
+  useFeedback,
+} from '../../components/ui';
 import { useStore } from '../../store/useStore';
 import { Lembrete, LembreteAcao, LembreteRemedio, Medicamento } from '../../types';
 import {
   avaliarValidadeMedicamento,
   calcularAlternanciaDoseNaData,
+  formatarMascaraHora,
+  formatarMascaraMesAno,
   isLembreteConcluidoNaData,
 } from '../../services/clinicaHelpers';
 import { exportarProntuarioPdf } from '../../services/prontuarioPdf';
 import { getHojeLocalKey } from '../../services/sync';
-import { styles } from './styles';
 import {
   NOTIFICATION_CHANNELS,
   NotificationSchedule,
@@ -36,6 +39,8 @@ import {
   scheduleNotification,
   sendTestNotification,
 } from '../../services/notifications';
+import { colors, spacing } from '../../theme/tokens';
+import { styles } from './styles';
 
 export type { Lembrete, LembreteRemedio, LembreteAcao, Medicamento };
 
@@ -45,7 +50,6 @@ interface Props {
   navigation: RemindersScreenNavigationProp;
 }
 
-// Chaves legadas usadas apenas para migração única rumo ao useStore
 const LEGACY_LEMBRETES_KEY = '@lembretes_saude_v4';
 const LEGACY_MEDICAMENTOS_KEY = '@medicamentos_saude_v4';
 
@@ -58,10 +62,37 @@ const ARMAZENAMENTO_OPCOES = [
 
 const FORMA_OPCOES = ['Comprimido', 'Cápsula', 'Gotas', 'Xarope', 'Pomada'];
 
+const MAIN_TABS: {
+  key: 'lembretes' | 'farmacia';
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { key: 'lembretes', label: 'Alarmes', icon: 'alarm-outline' },
+  { key: 'farmacia', label: 'Estoque Farmácia', icon: 'medkit-outline' },
+];
+
+const CATEGORIA_TABS: {
+  key: 'remedio' | 'acao';
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { key: 'remedio', label: 'Remédio', icon: 'medical-outline' },
+  { key: 'acao', label: 'Ação / Consulta', icon: 'calendar-outline' },
+];
+
+const TIPO_ACAO_OPTIONS: { value: LembreteAcao['tipoAcao']; label: string }[] = [
+  { value: 'consulta', label: 'Ida a consultas' },
+  { value: 'exercicio', label: 'Fazer exercícios' },
+  { value: 'agua', label: 'Beber água' },
+  { value: 'pressao', label: 'Medir pressão' },
+  { value: 'fisioterapia', label: 'Fisioterapia / Postura' },
+  { value: 'outro', label: 'Outros' },
+];
+
 export default function TelaLembretes({ navigation }: Props) {
+  const { showAlert, showToast, confirm } = useFeedback();
   const [activeTab, setActiveTab] = useState<'lembretes' | 'farmacia'>('lembretes');
 
-  // Estado global unificado no Zustand (RF14, RF16, RF17, RF18, RF20)
   const lembretes = useStore((state) => state.lembretes || []);
   const addLembrete = useStore((state) => state.addLembrete);
   const updateLembrete = useStore((state) => state.updateLembrete);
@@ -73,25 +104,23 @@ export default function TelaLembretes({ navigation }: Props) {
   const updateMedicamento = useStore((state) => state.updateMedicamento);
   const removeMedicamento = useStore((state) => state.removeMedicamento);
   const setMedicamentos = useStore((state) => state.setMedicamentos);
+
   const perfil = useStore((state) => state.perfil);
   const sinaisVitais = useStore((state) => state.sinaisVitais || []);
   const humorHistorico = useStore((state) => state.humorHistorico || []);
   const avaliacoesPsicologia = useStore((state) => state.avaliacoesPsicologia || []);
   const historicoDor = useStore((state) => state.historicoDor || []);
 
-  // --- ESTADOS DA ABA DE ALARMES ---
   const [filtro, setFiltro] = useState<'todos' | 'remedio' | 'acao'>('todos');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingLembreteId, setEditingLembreteId] = useState<string | null>(null);
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<'remedio' | 'acao'>('remedio');
 
-  // Formulário Lembrete - Remédio
   const [nomeRemedio, setNomeRemedio] = useState('');
   const [horarioRemedio, setHorarioRemedio] = useState('');
   const [frequenciaRemedio, setFrequenciaRemedio] = useState('');
   const [observacoesRemedio, setObservacoesRemedio] = useState('');
 
-  // Formulário Lembrete - Ação
   const [tipoAcao, setTipoAcao] = useState<LembreteAcao['tipoAcao']>('agua');
   const [acaoPersonalizada, setAcaoPersonalizada] = useState('');
   const [horarioAcao, setHorarioAcao] = useState('');
@@ -99,7 +128,6 @@ export default function TelaLembretes({ navigation }: Props) {
   const [consultaEspecialidade, setConsultaEspecialidade] = useState('');
   const [consultaPreparo, setConsultaPreparo] = useState('');
 
-  // --- ESTADOS DA ABA DE ESTOQUE MÉDICO (FARMÁCIA) ---
   const [medModalVisible, setMedModalVisible] = useState(false);
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
   const [nomeMed, setNomeMed] = useState('');
@@ -110,38 +138,12 @@ export default function TelaLembretes({ navigation }: Props) {
   const [validadeMed, setValidadeMed] = useState('');
   const [armazenamentoMed, setArmazenamentoMed] = useState('');
 
-  // Estados para periodicidade avançada
   const [periodicidade, setPeriodicidade] = useState<'diaria' | 'semanal' | 'dias_especificos'>('diaria');
   const [diasSelecionados, setDiasSelecionados] = useState<Weekday[]>([]);
 
-  const mostrarAlerta = (titulo: string, mensagem: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-    } else {
-      Alert.alert(titulo, mensagem);
-    }
-  };
+  const areaAccent = colors.areas.farmacia;
+  const hojeKey = getHojeLocalKey();
 
-  const confirmarAcao = (
-    titulo: string,
-    mensagem: string,
-    textoConfirmar: string,
-    onConfirm: () => void | Promise<void>
-  ) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`${titulo}\n\n${mensagem}`)) {
-        onConfirm();
-      }
-      return;
-    }
-
-    Alert.alert(titulo, mensagem, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: textoConfirmar, style: 'destructive', onPress: () => void onConfirm() },
-    ]);
-  };
-
-  // Migração única de AsyncStorage isolado legado para o useStore + Permissões
   useEffect(() => {
     const migrarDadosLegados = async () => {
       try {
@@ -155,11 +157,10 @@ export default function TelaLembretes({ navigation }: Props) {
           const estadoAtual = useStore.getState().lembretes || [];
           if (Array.isArray(parsed) && parsed.length > 0 && estadoAtual.length === 0) {
             const validos = parsed.filter(
-              (item: any) => item && (item.tipo === 'remedio' || item.tipo === 'acao')
+              (item: { tipo?: string }) =>
+                item && (item.tipo === 'remedio' || item.tipo === 'acao')
             ) as Lembrete[];
-            if (validos.length > 0) {
-              setLembretes(validos);
-            }
+            if (validos.length > 0) setLembretes(validos);
           }
           await AsyncStorage.removeItem(LEGACY_LEMBRETES_KEY);
         }
@@ -168,15 +169,13 @@ export default function TelaLembretes({ navigation }: Props) {
           const parsed = JSON.parse(legacyMedsRaw);
           const medsAtuais = useStore.getState().medicamentos || [];
           if (Array.isArray(parsed) && parsed.length > 0 && medsAtuais.length === 0) {
-            const validos = parsed.filter((item: any) => item && item.nome) as Medicamento[];
-            if (validos.length > 0) {
-              setMedicamentos(validos);
-            }
+            const validos = parsed.filter((item: { nome?: string }) => item && item.nome) as Medicamento[];
+            if (validos.length > 0) setMedicamentos(validos);
           }
           await AsyncStorage.removeItem(LEGACY_MEDICAMENTOS_KEY);
         }
-      } catch (error) {
-        console.log('Erro ao migrar dados legados para useStore:', error);
+      } catch {
+        // Ignora erro pontual de migração
       }
     };
 
@@ -186,8 +185,8 @@ export default function TelaLembretes({ navigation }: Props) {
       .then(() => migrarDadosLegados());
 
     initializeNotifications().then((granted) => {
-      if (!granted) {
-        mostrarAlerta('Aviso', 'O aplicativo não possui permissão para disparar alertas sonoros.');
+      if (!granted && Platform.OS !== 'web') {
+        showToast('Sem permissão de notificações sonoras no aparelho.', 'warning');
       }
     });
   }, []);
@@ -215,14 +214,9 @@ export default function TelaLembretes({ navigation }: Props) {
       };
     }
 
-    return {
-      type: 'daily',
-      hour,
-      minute,
-    };
+    return { type: 'daily', hour, minute };
   };
 
-  // --- FUNÇÕES DE ALARMES/NOTIFICAÇÕES ---
   const agendarNotificacaoLembrete = async (
     tipo: 'remedio' | 'acao',
     dados: {
@@ -283,20 +277,22 @@ export default function TelaLembretes({ navigation }: Props) {
         },
         dados.schedule
       );
-    } catch (error) {
-      console.log('Erro ao agendar a notificação:', error);
+    } catch {
       return [];
     }
   };
 
-  const cancelarNotificacaoLembrete = async (notificationId?: string, notificationIds?: string[]) => {
+  const cancelarNotificacaoLembrete = async (
+    notificationId?: string,
+    notificationIds?: string[]
+  ) => {
     if (Platform.OS === 'web') return;
     const ids = [notificationId, ...(notificationIds || [])].filter(Boolean) as string[];
     if (ids.length === 0) return;
     try {
       await cancelNotifications(ids);
-    } catch (error) {
-      console.log('Erro ao cancelar a notificação agendada:', error);
+    } catch {
+      // Ignora erro pontual de cancelamento
     }
   };
 
@@ -345,26 +341,25 @@ export default function TelaLembretes({ navigation }: Props) {
     setModalVisible(true);
   };
 
-  // Salva novo lembrete OU atualiza lembrete existente
   const handleSalvarLembrete = async () => {
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
     if (periodicidade !== 'diaria' && diasSelecionados.length === 0) {
-      mostrarAlerta('Atenção', 'Selecione pelo menos um dia da semana para a repetição.');
+      showAlert('Atenção', 'Selecione pelo menos um dia da semana para a repetição.');
       return;
     }
 
     if (categoriaSelecionada === 'remedio') {
       if (!nomeRemedio.trim()) {
-        mostrarAlerta('Atenção', 'Digite o nome do remédio.');
+        showAlert('Atenção', 'Digite o nome do remédio.');
         return;
       }
       if (!horarioRemedio.trim() || !timeRegex.test(horarioRemedio.trim())) {
-        mostrarAlerta('Atenção', 'Insira um horário válido no formato HH:MM (ex: 08:30).');
+        showAlert('Atenção', 'Insira um horário válido no formato HH:MM (ex: 08:30).');
         return;
       }
       if (!frequenciaRemedio.trim()) {
-        mostrarAlerta('Atenção', 'Defina a frequência.');
+        showAlert('Atenção', 'Defina a frequência do medicamento.');
         return;
       }
 
@@ -408,11 +403,11 @@ export default function TelaLembretes({ navigation }: Props) {
       }
     } else {
       if (tipoAcao === 'outro' && !acaoPersonalizada.trim()) {
-        mostrarAlerta('Atenção', 'Descreva qual ação você deseja lembrar.');
+        showAlert('Atenção', 'Descreva qual ação você deseja lembrar.');
         return;
       }
       if (!horarioAcao.trim() || !timeRegex.test(horarioAcao.trim())) {
-        mostrarAlerta('Atenção', 'Insira um horário válido no formato HH:MM (ex: 15:00).');
+        showAlert('Atenção', 'Insira um horário válido no formato HH:MM (ex: 15:00).');
         return;
       }
 
@@ -481,17 +476,15 @@ export default function TelaLembretes({ navigation }: Props) {
     const estavaEditando = Boolean(editingLembreteId);
     setModalVisible(false);
     limparCamposFormLembrete();
-    mostrarAlerta(
-      'Sucesso',
+    showToast(
       estavaEditando
         ? 'Lembrete e alarme atualizados com sucesso!'
-        : 'Lembrete cadastrado e alarme programado!'
+        : 'Lembrete cadastrado e alarme programado!',
+      'success'
     );
   };
 
-  // Marca como concluído na data atual e evita baixa duplicada no estoque no mesmo dia
   const handleAlternarConcluido = (item: Lembrete) => {
-    const hojeKey = getHojeLocalKey();
     const resultado = calcularAlternanciaDoseNaData(item, medicamentos, hojeKey);
 
     updateLembrete(item.id, {
@@ -505,38 +498,43 @@ export default function TelaLembretes({ navigation }: Props) {
       if (med.alteracao === 'baixou') {
         updateMedicamento(med.id, { estoque: String(med.novoEstoque) });
         if (med.novoEstoque <= 5) {
-          mostrarAlerta(
+          showAlert(
             'Estoque Baixo',
             `Dose de "${med.nome}" registrada (-1 unidade no estoque).\nRestam apenas ${med.novoEstoque} unidade(s) — providencie reposição!`
           );
         } else {
-          mostrarAlerta(
-            'Dose Confirmada',
-            `1 unidade de "${med.nome}" descontada do estoque.\nEstoque atual: ${med.novoEstoque} unidade(s).`
+          showToast(
+            `Dose de "${med.nome}" confirmada (${med.novoEstoque} un. restantes).`,
+            'success'
           );
         }
       } else if (med.alteracao === 'zerado') {
-        mostrarAlerta(
+        showAlert(
           'Estoque Zerado',
-          `Lembrete concluído, porém "${med.nome}" já está com 0 unidades em estoque.`
+          `Lembrete concluído, porém "${med.nome}" está com 0 unidades em estoque.`
         );
       }
     }
   };
 
-  const handleExcluirLembrete = (id: string, notificationId?: string, notificationIds?: string[]) => {
-    confirmarAcao(
-      'Excluir Lembrete',
-      'Deseja excluir este lembrete? O alarme associado também será cancelado.',
-      'Confirmar',
-      async () => {
+  const handleExcluirLembrete = (
+    id: string,
+    notificationId?: string,
+    notificationIds?: string[]
+  ) => {
+    confirm({
+      title: 'Excluir Lembrete',
+      message: 'Deseja excluir este lembrete? O alarme associado também será cancelado.',
+      confirmText: 'Excluir',
+      destructive: true,
+      onConfirm: async () => {
         await cancelarNotificacaoLembrete(notificationId, notificationIds);
         removeLembrete(id);
-      }
-    );
+        showToast('Lembrete excluído.', 'info');
+      },
+    });
   };
 
-  // --- GERENCIAMENTO DE ESTOQUE (FARMÁCIA - RF15, RF17, RF19, RF20) ---
   const limparCamposMed = () => {
     setEditingMedId(null);
     setNomeMed('');
@@ -567,13 +565,13 @@ export default function TelaLembretes({ navigation }: Props) {
 
   const handleSaveMed = () => {
     if (!nomeMed.trim() || !dosagemMed.trim()) {
-      mostrarAlerta('Erro', 'Nome e dosagem são obrigatórios.');
+      showAlert('Atenção', 'Nome e dosagem do medicamento são obrigatórios.');
       return;
     }
 
     const nomeLower = nomeMed.toLowerCase();
     if (nomeLower.includes('aspirina') || nomeLower.trim() === 'aas') {
-      mostrarAlerta(
+      showAlert(
         'Atenção: Interação',
         'Aspirina/AAS pode ter interação medicamentosa grave se combinada com anticoagulantes!'
       );
@@ -602,9 +600,9 @@ export default function TelaLembretes({ navigation }: Props) {
     const estavaEditando = Boolean(editingMedId);
     setMedModalVisible(false);
     limparCamposMed();
-    mostrarAlerta(
-      'Sucesso',
-      estavaEditando ? 'Medicamento atualizado no estoque!' : 'Medicamento adicionado ao estoque!'
+    showToast(
+      estavaEditando ? 'Medicamento atualizado no estoque!' : 'Medicamento adicionado ao estoque!',
+      'success'
     );
   };
 
@@ -614,38 +612,41 @@ export default function TelaLembretes({ navigation }: Props) {
         descontinuado: false,
         dataTermino: undefined,
       });
-      mostrarAlerta('Reativado', `"${med.nome}" voltou para seu estoque de medicamentos ativos.`);
+      showToast(`"${med.nome}" voltou para o estoque ativo.`, 'success');
       return;
     }
 
-    confirmarAcao(
-      'Descontinuar Medicamento',
-      `Deseja mover "${med.nome}" para o Histórico de Medicamentos Descontinuados?`,
-      'Descontinuar',
-      () => {
+    confirm({
+      title: 'Descontinuar Medicamento',
+      message: `Deseja mover "${med.nome}" para o histórico de medicamentos descontinuados?`,
+      confirmText: 'Descontinuar',
+      destructive: true,
+      onConfirm: () => {
         updateMedicamento(med.id, {
           descontinuado: true,
           dataTermino: new Date().toISOString(),
         });
-      }
-    );
+        showToast(`"${med.nome}" movido para descontinuados.`, 'info');
+      },
+    });
   };
 
   const handleDeleteMed = (id: string) => {
-    confirmarAcao(
-      'Excluir do Estoque',
-      'Deseja remover este medicamento definitivamente da lista?',
-      'Remover',
-      () => {
+    confirm({
+      title: 'Excluir do Estoque',
+      message: 'Deseja remover este medicamento definitivamente da lista?',
+      confirmText: 'Remover',
+      destructive: true,
+      onConfirm: () => {
         removeMedicamento(id);
-      }
-    );
+        showToast('Medicamento removido.', 'info');
+      },
+    });
   };
 
-  // Geração de PDF do Estoque Médico
   const handleGeneratePDF = async () => {
     if (medicamentos.length === 0) {
-      mostrarAlerta('Atenção', 'Você não possui medicamentos em estoque para gerar o relatório.');
+      showAlert('Atenção', 'Você não possui medicamentos em estoque para gerar o relatório.');
       return;
     }
 
@@ -666,8 +667,7 @@ export default function TelaLembretes({ navigation }: Props) {
         <td style="padding: 8px; border: 1px solid #ddd;">${med.validade || '—'}</td>
         <td style="padding: 8px; border: 1px solid #ddd;">${med.armazenamento || '—'}</td>
         <td style="padding: 8px; border: 1px solid #ddd;">${statusTxt}</td>
-      </tr>
-    `;
+      </tr>`;
       })
       .join('');
 
@@ -677,14 +677,14 @@ export default function TelaLembretes({ navigation }: Props) {
           <meta charset="utf-8" />
           <style>
             body { font-family: sans-serif; padding: 20px; color: #1F2937; }
-            h1 { color: #0056b3; text-align: center; }
+            h1 { color: #0B6E99; text-align: center; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-            th { background-color: #0056b3; color: white; padding: 8px; text-align: left; }
+            th { background-color: #0B6E99; color: white; padding: 8px; text-align: left; }
           </style>
         </head>
         <body>
           <h1>Relatório de Medicamentos em Estoque</h1>
-          <p>Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo aplicativo <strong>MeuAppDeSaude (UNC)</strong></p>
+          <p>Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo aplicativo <strong>Meu App de Saúde (UNC)</strong></p>
           <table>
             <thead>
               <tr>
@@ -697,9 +697,7 @@ export default function TelaLembretes({ navigation }: Props) {
                 <th>Situação</th>
               </tr>
             </thead>
-            <tbody>
-              ${rows}
-            </tbody>
+            <tbody>${rows}</tbody>
           </table>
         </body>
       </html>
@@ -717,8 +715,8 @@ export default function TelaLembretes({ navigation }: Props) {
       } else {
         await Print.printAsync({ html });
       }
-    } catch (error) {
-      mostrarAlerta('Erro', 'Não foi possível gerar e exportar o relatório em PDF.');
+    } catch {
+      showAlert('Erro', 'Não foi possível gerar e exportar o relatório em PDF.');
     }
   };
 
@@ -733,26 +731,29 @@ export default function TelaLembretes({ navigation }: Props) {
         historicoDor,
       });
     } catch {
-      mostrarAlerta('Erro', 'Não foi possível gerar o resumo clínico consolidado em PDF.');
+      showAlert('Erro', 'Não foi possível gerar o resumo clínico consolidado em PDF.');
     }
   };
 
   const handleTestNotification = async () => {
     try {
       await sendTestNotification();
-      mostrarAlerta('Sucesso', 'Notificação de teste disparada!');
-    } catch (e) {
-      mostrarAlerta('Teste de notificação', `Não foi possível disparar: ${(e as Error).message}`);
+      showToast('Notificação de teste disparada.', 'info');
+    } catch {
+      showAlert('Erro', 'Falha ao disparar teste de notificação.');
     }
   };
 
-  // --- MAPEAMENTOS E AUXILIARES ---
   const descreverPeriodicidade = (item: Lembrete): string => {
     if (item.periodicidade === 'semanal') {
       const nomeDia = WEEKDAYS.find((w) => w.value === item.diasSemana?.[0])?.label || 'Semanal';
       return `Toda ${nomeDia}`;
     }
-    if (item.periodicidade === 'dias_especificos' && item.diasSemana && item.diasSemana.length > 0) {
+    if (
+      item.periodicidade === 'dias_especificos' &&
+      item.diasSemana &&
+      item.diasSemana.length > 0
+    ) {
       return item.diasSemana
         .map((d) => WEEKDAYS.find((w) => w.value === d)?.short)
         .filter(Boolean)
@@ -799,765 +800,677 @@ export default function TelaLembretes({ navigation }: Props) {
     [medicamentos]
   );
 
-  // --- RENDERIZADORES ---
-  const hojeKey = getHojeLocalKey();
+  const concluidosHojeCount = useMemo(
+    () => lembretes.filter((l) => isLembreteConcluidoNaData(l, hojeKey)).length,
+    [lembretes, hojeKey]
+  );
 
-  const renderItemLembrete = ({ item }: { item: Lembrete }) => {
-    const isRemedio = item.tipo === 'remedio';
-    const concluidoHoje = isLembreteConcluidoNaData(item, hojeKey);
-    return (
-      <View
-        style={[
-          styles.card,
-          isRemedio ? styles.remedioCard : styles.acaoCard,
-          concluidoHoje && styles.completedCard,
-        ]}
-      >
-        <View style={styles.cardContent}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, concluidoHoje && styles.completedText]}>
-              {isRemedio ? item.nomeRemedio : obterTextoAcao(item)}
-            </Text>
-            <View style={[styles.cardBadge, isRemedio ? styles.remedioBadge : styles.acaoBadge]}>
-              <Text style={[styles.badgeText, isRemedio ? styles.remedioBadgeText : styles.acaoBadgeText]}>
-                {isRemedio ? '💊 Remédio' : '⚡ Ação'}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
-            ⏰ Horário: <Text style={{ fontWeight: 'bold' }}>{item.horario}</Text>
-          </Text>
-          <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
-            📅 Repetição: <Text style={{ fontWeight: 'bold' }}>{descreverPeriodicidade(item)}</Text>
-          </Text>
-          {isRemedio && (
-            <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
-              🔄 Frequência: {item.frequencia}
-            </Text>
-          )}
-
-          {isRemedio && item.observacoes && (
-            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
-              Obs: {item.observacoes}
-            </Text>
-          )}
-          {!isRemedio && item.tipoAcao === 'consulta' && (item.consultaEspecialidade || item.consultaLocal || item.consultaPreparo) && (
-            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
-              {[
-                item.consultaEspecialidade && `Especialidade: ${item.consultaEspecialidade}`,
-                item.consultaLocal && `Local: ${item.consultaLocal}`,
-                item.consultaPreparo && `Preparo: ${item.consultaPreparo}`,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          )}
-          {!isRemedio && item.tipoAcao === 'fisioterapia' && (item.fisioLocal || item.fisioTerapeuta || item.fisioOrientacoes) && (
-            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
-              {[
-                item.fisioLocal && `Local: ${item.fisioLocal}`,
-                item.fisioTerapeuta && `Profissional: ${item.fisioTerapeuta}`,
-                item.fisioOrientacoes,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, concluidoHoje && styles.checkButtonActive]}
-            onPress={() => handleAlternarConcluido(item)}
-            activeOpacity={0.7}
-            accessibilityLabel={concluidoHoje ? 'Desmarcar lembrete' : 'Concluir lembrete'}
-          >
-            <Text style={{ fontSize: 18 }}>{concluidoHoje ? '✅' : '⬜'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.editButton]}
-            onPress={() => handleAbrirEditarLembrete(item)}
-            activeOpacity={0.7}
-            accessibilityLabel="Editar lembrete"
-          >
-            <Text style={{ fontSize: 17 }}>✏️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleExcluirLembrete(item.id, item.notificationId, item.notificationIds)}
-            activeOpacity={0.7}
-            accessibilityLabel="Excluir lembrete"
-          >
-            <Text style={{ fontSize: 17 }}>❌</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  const renderMedicamentoCard = ({ item }: { item: Medicamento }) => {
-    const estoqueNum = parseInt(item.estoque || '0', 10);
-    const isEstoqueBaixo = !isNaN(estoqueNum) && estoqueNum <= 5;
-    const statusValidade = avaliarValidadeMedicamento(item.validade);
-
-    return (
-      <View style={[styles.medCard, isEstoqueBaixo && styles.medCardLowStock]}>
-        <View style={styles.medTopRow}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.medTitle}>{item.nome}</Text>
-            <Text style={styles.medSub}>
-              {item.dosagem} • {item.forma}
-            </Text>
-          </View>
-
-          <View style={[styles.medEstoqueBadge, isEstoqueBaixo && styles.medEstoqueBadgeLow]}>
-            <Text style={[styles.medEstoqueText, isEstoqueBaixo && styles.medEstoqueTextLow]}>
-              Qtd: {item.estoque}
-            </Text>
-          </View>
-        </View>
-
-        {isEstoqueBaixo && (
-          <View style={styles.lowStockBanner}>
-            <Text style={styles.lowStockText}>
-              ⚠️ Estoque Baixo! ({estoqueNum === 0 ? 'Acabou' : `${estoqueNum} un. restantes`})
-            </Text>
-          </View>
-        )}
-
-        {(item.prescritor || item.validade || item.armazenamento) && (
-          <View style={styles.medMetaBox}>
-            {item.prescritor ? (
-              <Text style={styles.medMetaLine}>👨‍⚕️ Prescritor: {item.prescritor}</Text>
-            ) : null}
-            {item.validade ? (
-              <Text
-                style={[
-                  styles.medMetaLine,
-                  statusValidade === 'vencido' && { color: '#991B1B', fontWeight: '800' },
-                  statusValidade === 'proximo' && { color: '#B45309', fontWeight: '800' },
-                ]}
-              >
-                📅 Validade: {item.validade}
-                {statusValidade === 'vencido' ? ' (Vencido!)' : statusValidade === 'proximo' ? ' (Vence em breve)' : ''}
-              </Text>
-            ) : null}
-            {item.armazenamento ? (
-              <Text style={styles.medMetaLine}>📦 Armazenamento: {item.armazenamento}</Text>
-            ) : null}
-          </View>
-        )}
-
-        <View style={styles.medActionsRow}>
-          <TouchableOpacity
-            style={styles.medSecondaryBtn}
-            onPress={() => handleAbrirEditarMed(item)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.medSecondaryBtnText}>✏️ Editar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.medWarnBtn}
-            onPress={() => handleToggleDescontinuarMed(item)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.medWarnBtnText}>⏸️ Descontinuar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.medDeleteButton}
-            onPress={() => handleDeleteMed(item.id)}
-            activeOpacity={0.75}
-            accessibilityLabel="Excluir medicamento"
-          >
-            <Text style={{ fontSize: 16 }}>❌</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const alertasEstoque = useMemo(() => {
+    const baixo = medicamentosAtivos.filter((m) => {
+      const q = parseInt(m.estoque || '0', 10);
+      return !isNaN(q) && q <= 5;
+    }).length;
+    const validade = medicamentosAtivos.filter((m) => {
+      const st = avaliarValidadeMedicamento(m.validade);
+      return st === 'vencido' || st === 'proximo';
+    }).length;
+    return { baixo, validade };
+  }, [medicamentosAtivos]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Cabeçalho */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Lembretes & Farmácia</Text>
-        <Text style={styles.subtitle}>Gerencie seus alarmes, doses e estoque de medicamentos.</Text>
-      </View>
-
-      {/* Abas Principais (Alarmes vs Estoque Médico) */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'lembretes' && styles.tabActive]}
-          onPress={() => setActiveTab('lembretes')}
-        >
-          <Text style={[styles.tabText, activeTab === 'lembretes' && styles.tabTextActive]}>⏰ Alarmes</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'farmacia' && styles.tabActive]}
-          onPress={() => setActiveTab('farmacia')}
-        >
-          <Text style={[styles.tabText, activeTab === 'farmacia' && styles.tabTextActive]}>📦 Estoque</Text>
-        </TouchableOpacity>
-      </View>
+    <ScreenShell
+      title="Lembretes & Farmácia"
+      subtitle="Alarmes diários de medicação, cuidados e controle de estoque."
+      areaBadge={{ label: 'Farmácia & Agenda', color: areaAccent.color, bg: areaAccent.bg }}
+      onBack={() => navigation.goBack()}
+    >
+      <SegmentedTabs tabs={MAIN_TABS} activeKey={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'lembretes' ? (
-        <>
-          <View style={styles.filterRow}>
-            <TouchableOpacity
-              style={[styles.filterTab, filtro === 'todos' && styles.filterTabActive]}
-              onPress={() => setFiltro('todos')}
-            >
-              <Text style={[styles.filterTabText, filtro === 'todos' && styles.filterTabTextActive]}>Todos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTab, filtro === 'remedio' && styles.filterTabActive]}
-              onPress={() => setFiltro('remedio')}
-            >
-              <Text style={[styles.filterTabText, filtro === 'remedio' && styles.filterTabTextActive]}>
-                💊 Remédios
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTab, filtro === 'acao' && styles.filterTabActive]}
-              onPress={() => setFiltro('acao')}
-            >
-              <Text style={[styles.filterTabText, filtro === 'acao' && styles.filterTabTextActive]}>⚡ Ações</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.newButton} activeOpacity={0.8} onPress={handleAbrirNovoLembrete}>
-            <Text style={styles.newButtonText}>+ Novo Lembrete</Text>
-          </TouchableOpacity>
-
-          {__DEV__ && (
-            <TouchableOpacity 
-              style={[styles.newButton, { backgroundColor: '#6C757D', marginTop: -8 }]} 
-              activeOpacity={0.8} 
-              onPress={handleTestNotification}
-            >
-              <Text style={styles.newButtonText}>🔔 Testar Notificação Imediata (Dev)</Text>
-            </TouchableOpacity>
+        <View style={styles.stack}>
+          {lembretes.length > 0 && (
+            <AppCard variant="elevated">
+              <View style={styles.adherenceHeader}>
+                <View style={styles.adherenceTitleRow}>
+                  <Ionicons name="checkmark-done-circle-outline" size={20} color={areaAccent.color} />
+                  <Text style={styles.sectionTitle}>Adesão de Hoje</Text>
+                </View>
+                <StatusBadge
+                  label={`${concluidosHojeCount}/${lembretes.length} concluídos`}
+                  tone={concluidosHojeCount === lembretes.length ? 'success' : 'info'}
+                />
+              </View>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${
+                        lembretes.length > 0 ? (concluidosHojeCount / lembretes.length) * 100 : 0
+                      }%`,
+                    },
+                  ]}
+                />
+              </View>
+            </AppCard>
           )}
-          <FlatList
-            data={lembretesFiltrados}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItemLembrete}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={{ fontSize: 36 }}>📋</Text>
-                <Text style={styles.emptyText}>Nenhum lembrete nesta categoria.</Text>
-              </View>
-            }
-          />
-        </>
-      ) : (
-        <>
-          <View style={styles.rowButtons}>
-            <TouchableOpacity style={styles.pdfButton} activeOpacity={0.8} onPress={handleGeneratePDF}>
-              <Text style={styles.buttonText}>PDF Estoque</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.addMedButton} activeOpacity={0.8} onPress={handleAbrirNovoMed}>
-              <Text style={styles.buttonText}>+ Medicamento</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[styles.pdfButton, { marginHorizontal: 16, marginBottom: 10, backgroundColor: '#0F766E' }]}
-            activeOpacity={0.8}
-            onPress={handleGerarProntuarioCompleto}
-          >
-            <Text style={styles.buttonText}>Gerar Prontuário Completo (PDF)</Text>
-          </TouchableOpacity>
 
-          <FlatList
-            data={medicamentosAtivos}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMedicamentoCard}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={{ fontSize: 36 }}>📦</Text>
-                <Text style={styles.emptyText}>Nenhum medicamento ativo em estoque.</Text>
-              </View>
-            }
-            ListFooterComponent={
-              medicamentosDescontinuados.length > 0 ? (
-                <View style={styles.discontinuedSection}>
-                  <Text style={styles.discontinuedSectionTitle}>
-                    Histórico de Medicamentos Descontinuados (RF20)
-                  </Text>
-                  {medicamentosDescontinuados.map((med) => (
-                    <View key={med.id} style={styles.discontinuedCard}>
-                      <Text style={styles.discontinuedTitle}>
-                        {med.nome} ({med.dosagem})
-                      </Text>
-                      <Text style={styles.discontinuedMeta}>
-                        {med.forma}
-                        {med.dataTermino
-                          ? ` • Encerrado em ${new Date(med.dataTermino).toLocaleDateString('pt-BR')}`
-                          : ''}
-                      </Text>
-                      {med.prescritor ? (
-                        <Text style={styles.discontinuedMeta}>Prescritor: {med.prescritor}</Text>
-                      ) : null}
-                      <View style={styles.medActionsRow}>
+          <ChipSelector
+            options={[
+              { value: 'todos', label: 'Todos' },
+              { value: 'remedio', label: 'Remédios' },
+              { value: 'acao', label: 'Ações & Consultas' },
+            ]}
+            selected={filtro}
+            onSelect={setFiltro}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <View style={styles.actionsRow}>
+            <View style={styles.actionFlex}>
+              <AppButton
+                title="Novo Lembrete"
+                icon="add-circle-outline"
+                variant="primary"
+                onPress={handleAbrirNovoLembrete}
+              />
+            </View>
+            {__DEV__ && (
+              <AppButton
+                title="Testar Notificação (Dev)"
+                icon="notifications-outline"
+                variant="outline"
+                compact
+                onPress={handleTestNotification}
+              />
+            )}
+          </View>
+
+          {lembretesFiltrados.length === 0 ? (
+            <EmptyState
+              icon="alarm-outline"
+              title="Nenhum lembrete nesta categoria"
+              description="Cadastre lembretes de medicamentos, consultas ou pausas diárias de cuidado."
+              actionLabel="Cadastrar Lembrete"
+              onAction={handleAbrirNovoLembrete}
+            />
+          ) : (
+            <View style={styles.listStack}>
+              {lembretesFiltrados.map((item) => {
+                const isRemedio = item.tipo === 'remedio';
+                const concluidoHoje = isLembreteConcluidoNaData(item, hojeKey);
+
+                return (
+                  <AppCard
+                    key={item.id}
+                    variant={concluidoHoje ? 'alert' : 'elevated'}
+                    tone={concluidoHoje ? 'success' : 'info'}
+                  >
+                    <View style={styles.cardMainRow}>
+                      <View style={styles.cardInfo}>
+                        <View style={styles.cardTopRow}>
+                          <Text style={[styles.cardTitle, concluidoHoje && styles.cardTitleDone]}>
+                            {isRemedio ? item.nomeRemedio : obterTextoAcao(item)}
+                          </Text>
+                          <StatusBadge
+                            label={isRemedio ? 'Remédio' : 'Ação'}
+                            tone={isRemedio ? 'info' : 'neutral'}
+                          />
+                        </View>
+
+                        <View style={styles.metaRow}>
+                          <Ionicons name="time-outline" size={16} color={colors.text.secondary} />
+                          <Text style={styles.metaText}>{item.horario}</Text>
+                          <Text style={styles.metaText}>·</Text>
+                          <Text style={styles.metaText}>{descreverPeriodicidade(item)}</Text>
+                        </View>
+
+                        {isRemedio && (
+                          <View style={styles.metaRow}>
+                            <Ionicons name="repeat-outline" size={16} color={colors.text.secondary} />
+                            <Text style={styles.metaText}>Frequência: {item.frequencia}</Text>
+                          </View>
+                        )}
+
+                        {isRemedio && item.observacoes ? (
+                          <Text style={styles.notesText}>Obs.: {item.observacoes}</Text>
+                        ) : null}
+
+                        {!isRemedio &&
+                          item.tipoAcao === 'consulta' &&
+                          (item.consultaEspecialidade || item.consultaLocal || item.consultaPreparo) && (
+                            <Text style={styles.notesText}>
+                              {[
+                                item.consultaEspecialidade && `Especialidade: ${item.consultaEspecialidade}`,
+                                item.consultaLocal && `Local: ${item.consultaLocal}`,
+                                item.consultaPreparo && `Preparo: ${item.consultaPreparo}`,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </Text>
+                          )}
+
+                        {!isRemedio &&
+                          item.tipoAcao === 'fisioterapia' &&
+                          (item.fisioLocal || item.fisioTerapeuta || item.fisioOrientacoes) && (
+                            <Text style={styles.notesText}>
+                              {[
+                                item.fisioLocal && `Local: ${item.fisioLocal}`,
+                                item.fisioTerapeuta && `Profissional: ${item.fisioTerapeuta}`,
+                                item.fisioOrientacoes,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </Text>
+                          )}
+                      </View>
+
+                      <View style={styles.cardActionsCol}>
                         <TouchableOpacity
-                          style={styles.medSecondaryBtn}
-                          onPress={() => handleToggleDescontinuarMed(med)}
+                          style={[styles.iconBtn, concluidoHoje && styles.iconBtnDone]}
+                          onPress={() => handleAlternarConcluido(item)}
+                          accessibilityLabel={
+                            concluidoHoje ? 'Desmarcar lembrete' : 'Concluir lembrete'
+                          }
                         >
-                          <Text style={styles.medSecondaryBtnText}>🔄 Reativar</Text>
+                          <Ionicons
+                            name={concluidoHoje ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={22}
+                            color={concluidoHoje ? colors.semantic.success : colors.text.secondary}
+                          />
                         </TouchableOpacity>
+
                         <TouchableOpacity
-                          style={styles.medDeleteButton}
-                          onPress={() => handleDeleteMed(med.id)}
+                          style={styles.iconBtn}
+                          onPress={() => handleAbrirEditarLembrete(item)}
+                          accessibilityLabel="Editar lembrete"
                         >
-                          <Text style={{ fontSize: 16 }}>❌</Text>
+                          <Ionicons name="create-outline" size={19} color={colors.brand.primary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          onPress={() =>
+                            handleExcluirLembrete(
+                              item.id,
+                              item.notificationId,
+                              item.notificationIds
+                            )
+                          }
+                          accessibilityLabel="Excluir lembrete"
+                        >
+                          <Ionicons name="trash-outline" size={19} color={colors.semantic.danger} />
                         </TouchableOpacity>
                       </View>
                     </View>
-                  ))}
+                  </AppCard>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      ) : (
+        <View style={styles.stack}>
+          {(alertasEstoque.baixo > 0 || alertasEstoque.validade > 0) && (
+            <AppCard variant="alert" tone="warning">
+              <View style={styles.bannerRow}>
+                <Ionicons name="warning" size={22} color={colors.semantic.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>Atenção ao Estoque</Text>
+                  <Text style={styles.sectionSub}>
+                    {[
+                      alertasEstoque.baixo > 0
+                        ? `${alertasEstoque.baixo} medicamento(s) com estoque baixo (<= 5)`
+                        : '',
+                      alertasEstoque.validade > 0
+                        ? `${alertasEstoque.validade} item(ns) vencido(s) ou próximos do vencimento`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
                 </View>
-              ) : null
-            }
+              </View>
+            </AppCard>
+          )}
+
+          <View style={styles.actionsRow}>
+            <View style={styles.actionFlex}>
+              <AppButton
+                title="Novo Medicamento"
+                icon="add-circle-outline"
+                variant="primary"
+                onPress={handleAbrirNovoMed}
+              />
+            </View>
+            <View style={styles.actionFlex}>
+              <AppButton
+                title="PDF do Estoque"
+                icon="document-text-outline"
+                variant="outline"
+                onPress={handleGeneratePDF}
+              />
+            </View>
+          </View>
+
+          <AppButton
+            title="Gerar Prontuário Clínico Completo (PDF)"
+            icon="medkit-outline"
+            variant="secondary"
+            onPress={handleGerarProntuarioCompleto}
           />
-        </>
+
+          {medicamentosAtivos.length === 0 ? (
+            <EmptyState
+              icon="medkit-outline"
+              title="Nenhum medicamento ativo no estoque"
+              description="Adicione medicamentos para acompanhar estoque, validade, prescrição e armazenamento."
+              actionLabel="Adicionar Medicamento"
+              onAction={handleAbrirNovoMed}
+            />
+          ) : (
+            <View style={styles.listStack}>
+              {medicamentosAtivos.map((item) => {
+                const estoqueNum = parseInt(item.estoque || '0', 10);
+                const isEstoqueBaixo = !isNaN(estoqueNum) && estoqueNum <= 5;
+                const statusValidade = avaliarValidadeMedicamento(item.validade);
+
+                return (
+                  <AppCard
+                    key={item.id}
+                    variant={isEstoqueBaixo || statusValidade === 'vencido' ? 'alert' : 'elevated'}
+                    tone={statusValidade === 'vencido' ? 'danger' : isEstoqueBaixo ? 'warning' : 'info'}
+                  >
+                    <View style={styles.cardTopRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle}>{item.nome}</Text>
+                        <Text style={styles.metaText}>
+                          {item.dosagem} · {item.forma}
+                        </Text>
+                      </View>
+                      <StatusBadge
+                        label={`Qtd: ${item.estoque}`}
+                        tone={isEstoqueBaixo ? 'danger' : 'success'}
+                      />
+                    </View>
+
+                    {(item.prescritor || item.validade || item.armazenamento) && (
+                      <View style={styles.medMetaBox}>
+                        {item.prescritor ? (
+                          <View style={styles.metaRow}>
+                            <Ionicons name="person-outline" size={15} color={colors.text.secondary} />
+                            <Text style={styles.metaText}>Prescritor: {item.prescritor}</Text>
+                          </View>
+                        ) : null}
+                        {item.validade ? (
+                          <View style={styles.metaRow}>
+                            <Ionicons
+                              name="calendar-outline"
+                              size={15}
+                              color={
+                                statusValidade === 'vencido'
+                                  ? colors.semantic.danger
+                                  : statusValidade === 'proximo'
+                                    ? colors.semantic.warning
+                                    : colors.text.secondary
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.metaText,
+                                statusValidade === 'vencido' && {
+                                  color: colors.semantic.danger,
+                                  fontWeight: '700',
+                                },
+                                statusValidade === 'proximo' && {
+                                  color: colors.semantic.warning,
+                                  fontWeight: '700',
+                                },
+                              ]}
+                            >
+                              Validade: {item.validade}
+                              {statusValidade === 'vencido'
+                                ? ' (Vencido)'
+                                : statusValidade === 'proximo'
+                                  ? ' (Vence em breve)'
+                                  : ''}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {item.armazenamento ? (
+                          <View style={styles.metaRow}>
+                            <Ionicons name="cube-outline" size={15} color={colors.text.secondary} />
+                            <Text style={styles.metaText}>Guardar: {item.armazenamento}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    )}
+
+                    <View style={styles.medButtonsRow}>
+                      <AppButton
+                        title="Editar"
+                        icon="create-outline"
+                        variant="outline"
+                        compact
+                        onPress={() => handleAbrirEditarMed(item)}
+                      />
+                      <AppButton
+                        title="Descontinuar"
+                        icon="pause-circle-outline"
+                        variant="outline"
+                        compact
+                        onPress={() => handleToggleDescontinuarMed(item)}
+                      />
+                      <AppButton
+                        title="Excluir"
+                        icon="trash-outline"
+                        variant="danger"
+                        compact
+                        onPress={() => handleDeleteMed(item.id)}
+                      />
+                    </View>
+                  </AppCard>
+                );
+              })}
+            </View>
+          )}
+
+          {medicamentosDescontinuados.length > 0 && (
+            <View style={styles.discontinuedBlock}>
+              <Text style={styles.discontinuedHeading}>
+                Histórico de Medicamentos Descontinuados
+              </Text>
+              {medicamentosDescontinuados.map((med) => (
+                <AppCard key={med.id} variant="outlined">
+                  <View style={styles.cardTopRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sectionTitle}>
+                        {med.nome} ({med.dosagem})
+                      </Text>
+                      <Text style={styles.metaText}>
+                        {med.forma}
+                        {med.dataTermino
+                          ? ` · Encerrado em ${new Date(med.dataTermino).toLocaleDateString('pt-BR')}`
+                          : ''}
+                      </Text>
+                      {med.prescritor ? (
+                        <Text style={styles.metaText}>Prescritor: {med.prescritor}</Text>
+                      ) : null}
+                    </View>
+                    <StatusBadge label="Descontinuado" tone="neutral" />
+                  </View>
+
+                  <View style={styles.medButtonsRow}>
+                    <AppButton
+                      title="Reativar"
+                      icon="refresh-outline"
+                      variant="secondary"
+                      compact
+                      onPress={() => handleToggleDescontinuarMed(med)}
+                    />
+                    <AppButton
+                      title="Excluir"
+                      icon="trash-outline"
+                      variant="danger"
+                      compact
+                      onPress={() => handleDeleteMed(med.id)}
+                    />
+                  </View>
+                </AppCard>
+              ))}
+            </View>
+          )}
+        </View>
       )}
 
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
-        <Text style={styles.backButtonText}>Voltar ao Painel</Text>
-      </TouchableOpacity>
-
-      {/* MODAL NOVO / EDITAR LEMBRETE (RF14) */}
-      <Modal
+      <AppModal
         visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
+        title={editingLembreteId ? 'Editar Lembrete' : 'Novo Lembrete'}
+        onClose={() => {
           setModalVisible(false);
           limparCamposFormLembrete();
         }}
+        footer={
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <AppButton
+              title="Cancelar"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => {
+                setModalVisible(false);
+                limparCamposFormLembrete();
+              }}
+            />
+            <AppButton
+              title={editingLembreteId ? 'Atualizar' : 'Salvar'}
+              variant="primary"
+              style={{ flex: 1 }}
+              onPress={handleSalvarLembrete}
+            />
+          </View>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>
-              {editingLembreteId ? 'Editar Lembrete' : 'Novo Lembrete'}
-            </Text>
+        <View style={{ gap: spacing.sm }}>
+          {!editingLembreteId && (
+            <SegmentedTabs
+              tabs={CATEGORIA_TABS}
+              activeKey={categoriaSelecionada}
+              onChange={setCategoriaSelecionada}
+            />
+          )}
 
-            {!editingLembreteId && (
-              <View style={styles.categorySelector}>
-                <TouchableOpacity
-                  style={[styles.categoryTab, categoriaSelecionada === 'remedio' && styles.categoryTabActiveRemedio]}
-                  onPress={() => setCategoriaSelecionada('remedio')}
-                >
-                  <Text
-                    style={[
-                      styles.categoryTabText,
-                      categoriaSelecionada === 'remedio' && styles.categoryTabTextActive,
-                    ]}
-                  >
-                    💊 Remédio
-                  </Text>
-                </TouchableOpacity>
+          {categoriaSelecionada === 'remedio' ? (
+            <View>
+              <AppInput
+                label="Nome do Remédio *"
+                placeholder="Ex: Losartana, Dipirona"
+                value={nomeRemedio}
+                onChangeText={setNomeRemedio}
+              />
+              <AppInput
+                label="Horário (HH:MM) *"
+                placeholder="Ex: 08:00"
+                value={horarioRemedio}
+                onChangeText={(txt) => setHorarioRemedio(formatarMascaraHora(txt))}
+                keyboardType="numeric"
+                maxLength={5}
+              />
+              <AppInput
+                label="Frequência *"
+                placeholder="Ex: De 8 em 8 horas, 1x ao dia"
+                value={frequenciaRemedio}
+                onChangeText={setFrequenciaRemedio}
+              />
+              <AppInput
+                label="Observações (opcional)"
+                placeholder="Ex: Tomar após o almoço"
+                value={observacoesRemedio}
+                onChangeText={setObservacoesRemedio}
+                multiline
+              />
+            </View>
+          ) : (
+            <View>
+              <ChipSelector
+                label="Tipo de Ação *"
+                options={TIPO_ACAO_OPTIONS}
+                selected={tipoAcao}
+                onSelect={setTipoAcao}
+                accentColor={areaAccent.color}
+                accentBg={areaAccent.bg}
+              />
 
-                <TouchableOpacity
-                  style={[styles.categoryTab, categoriaSelecionada === 'acao' && styles.categoryTabActiveAcao]}
-                  onPress={() => setCategoriaSelecionada('acao')}
-                >
-                  <Text
-                    style={[
-                      styles.categoryTabText,
-                      categoriaSelecionada === 'acao' && styles.categoryTabTextActive,
-                    ]}
-                  >
-                    ⚡ Ação
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              {(tipoAcao === 'outro' || tipoAcao === 'fisioterapia') && (
+                <AppInput
+                  label={tipoAcao === 'fisioterapia' ? 'Descrição da Sessão / Postura' : 'Descreva a Ação *'}
+                  placeholder="Ex: Alongamento lombar, Banho de sol"
+                  value={acaoPersonalizada}
+                  onChangeText={setAcaoPersonalizada}
+                />
+              )}
 
-            <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {categoriaSelecionada === 'remedio' ? (
+              {tipoAcao === 'consulta' && (
                 <View>
-                  <Text style={styles.label}>Nome do Remédio *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: Paracetamol, Losartana"
-                    placeholderTextColor="#6B7280"
-                    value={nomeRemedio}
-                    onChangeText={setNomeRemedio}
+                  <AppInput
+                    label="Especialidade (opcional)"
+                    placeholder="Ex: Cardiologia, Fisioterapia"
+                    value={consultaEspecialidade}
+                    onChangeText={setConsultaEspecialidade}
                   />
-
-                  <Text style={styles.label}>Horário *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 08:00, 22:30"
-                    placeholderTextColor="#6B7280"
-                    value={horarioRemedio}
-                    onChangeText={setHorarioRemedio}
-                    keyboardType="numbers-and-punctuation"
+                  <AppInput
+                    label="Local da consulta (opcional)"
+                    placeholder="Ex: UBS Centro ou Clínica UNC"
+                    value={consultaLocal}
+                    onChangeText={setConsultaLocal}
                   />
-
-                  <Text style={styles.label}>Frequência *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: A cada 8 horas, Uma vez ao dia"
-                    placeholderTextColor="#6B7280"
-                    value={frequenciaRemedio}
-                    onChangeText={setFrequenciaRemedio}
-                  />
-
-                  <Text style={styles.label}>Observações Opcionais</Text>
-                  <TextInput
-                    style={[styles.input, { height: 84, textAlignVertical: 'top' }]}
-                    placeholder="Ex: Tomar após o almoço"
-                    placeholderTextColor="#6B7280"
-                    value={observacoesRemedio}
-                    onChangeText={setObservacoesRemedio}
-                    multiline={true}
-                  />
-                </View>
-              ) : (
-                <View>
-                  <Text style={styles.label}>Tipo de Ação *</Text>
-                  <View style={styles.selectRow}>
-                    {(['consulta', 'exercicio', 'agua', 'pressao', 'fisioterapia', 'outro'] as const).map((item) => {
-                      const label =
-                        item === 'consulta'
-                          ? 'Ida a consultas'
-                          : item === 'exercicio'
-                            ? 'Fazer exercícios'
-                            : item === 'agua'
-                              ? 'Beber água'
-                              : item === 'pressao'
-                                ? 'Medir pressão'
-                                : item === 'fisioterapia'
-                                  ? 'Fisioterapia / Postura'
-                                  : 'Outros';
-
-                      return (
-                        <TouchableOpacity
-                          key={item}
-                          style={[styles.selectItem, tipoAcao === item && styles.selectItemActive]}
-                          onPress={() => setTipoAcao(item)}
-                        >
-                          <Text style={[styles.selectItemText, tipoAcao === item && styles.selectItemTextActive]}>
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {tipoAcao === 'outro' && (
-                    <View>
-                      <Text style={styles.label}>Descreva a Ação *</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Ex: Tomar banho de sol"
-                        placeholderTextColor="#6B7280"
-                        value={acaoPersonalizada}
-                        onChangeText={setAcaoPersonalizada}
-                      />
-                    </View>
-                  )}
-
-                  {tipoAcao === 'consulta' && (
-                    <View>
-                      <Text style={styles.label}>Especialidade (opcional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Ex: Cardiologia, Fisioterapia"
-                        placeholderTextColor="#6B7280"
-                        value={consultaEspecialidade}
-                        onChangeText={setConsultaEspecialidade}
-                      />
-                      <Text style={styles.label}>Local da consulta (opcional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Ex: UBS Centro ou Clínica UNC"
-                        placeholderTextColor="#6B7280"
-                        value={consultaLocal}
-                        onChangeText={setConsultaLocal}
-                      />
-                      <Text style={styles.label}>Preparo / Observações (opcional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Ex: Levar exames recentes, jejum 8h"
-                        placeholderTextColor="#6B7280"
-                        value={consultaPreparo}
-                        onChangeText={setConsultaPreparo}
-                      />
-                    </View>
-                  )}
-
-                  <Text style={styles.label}>Horário *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 14:00, 19:30"
-                    placeholderTextColor="#6B7280"
-                    value={horarioAcao}
-                    onChangeText={setHorarioAcao}
-                    keyboardType="numbers-and-punctuation"
+                  <AppInput
+                    label="Preparo / Observações (opcional)"
+                    placeholder="Ex: Levar exames recentes, jejum 8h"
+                    value={consultaPreparo}
+                    onChangeText={setConsultaPreparo}
                   />
                 </View>
               )}
 
-              {/* Seletor de Periodicidade Avançada (Comum para Remédio e Ação) */}
-              <View style={{ marginTop: 14, marginBottom: 8 }}>
-                <Text style={styles.label}>Repetição do Alarme *</Text>
-                <View style={styles.periodicityContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.periodicityButton,
-                      periodicidade === 'diaria' && styles.periodicityButtonActive,
-                    ]}
-                    onPress={() => {
-                      setPeriodicidade('diaria');
-                      setDiasSelecionados([]);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.periodicityButtonText,
-                        periodicidade === 'diaria' && styles.periodicityButtonTextActive,
-                      ]}
-                    >
-                      Diária
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.periodicityButton,
-                      periodicidade === 'semanal' && styles.periodicityButtonActive,
-                    ]}
-                    onPress={() => {
-                      setPeriodicidade('semanal');
-                      if (diasSelecionados.length === 0) setDiasSelecionados([2]); // Segunda-feira como padrão
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.periodicityButtonText,
-                        periodicidade === 'semanal' && styles.periodicityButtonTextActive,
-                      ]}
-                    >
-                      Semanal
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.periodicityButton,
-                      periodicidade === 'dias_especificos' && styles.periodicityButtonActive,
-                    ]}
-                    onPress={() => setPeriodicidade('dias_especificos')}
-                  >
-                    <Text
-                      style={[
-                        styles.periodicityButtonText,
-                        periodicidade === 'dias_especificos' && styles.periodicityButtonTextActive,
-                      ]}
-                    >
-                      Dias Específicos
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {periodicidade !== 'diaria' && (
-                  <View style={styles.weekdayRow}>
-                    {WEEKDAYS.map((w) => {
-                      const isSelected = diasSelecionados.includes(w.value);
-                      return (
-                        <TouchableOpacity
-                          key={w.value}
-                          style={[
-                            styles.weekdayButton,
-                            isSelected && styles.weekdayButtonActive,
-                          ]}
-                          onPress={() => {
-                            if (periodicidade === 'semanal') {
-                              setDiasSelecionados([w.value]);
-                            } else {
-                              setDiasSelecionados((prev) =>
-                                prev.includes(w.value)
-                                  ? prev.filter((d) => d !== w.value)
-                                  : [...prev, w.value].sort()
-                              );
-                            }
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.weekdayButtonText,
-                              isSelected && styles.weekdayButtonTextActive,
-                            ]}
-                          >
-                            {w.short}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.btnCancelar}
-                onPress={() => {
-                  setModalVisible(false);
-                  limparCamposFormLembrete();
-                }}
-              >
-                <Text style={styles.btnCancelarText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.btnSalvar,
-                  categoriaSelecionada === 'remedio' ? styles.btnSalvarRemedio : styles.btnSalvarAcao,
-                ]}
-                onPress={handleSalvarLembrete}
-              >
-                <Text style={styles.btnSalvarText}>{editingLembreteId ? 'Atualizar' : 'Salvar'}</Text>
-              </TouchableOpacity>
+              <AppInput
+                label="Horário (HH:MM) *"
+                placeholder="Ex: 14:00"
+                value={horarioAcao}
+                onChangeText={(txt) => setHorarioAcao(formatarMascaraHora(txt))}
+                keyboardType="numeric"
+                maxLength={5}
+              />
             </View>
-          </View>
-        </View>
-      </Modal>
+          )}
 
-      {/* MODAL NOVO / EDITAR MEDICAMENTO (ESTOQUE - RF15, RF17, RF19) */}
-      <Modal
+          <ChipSelector
+            label="Repetição do Alarme *"
+            options={[
+              { value: 'diaria', label: 'Diária' },
+              { value: 'semanal', label: 'Semanal' },
+              { value: 'dias_especificos', label: 'Dias Específicos' },
+            ]}
+            selected={periodicidade}
+            onSelect={setPeriodicidade}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          {periodicidade !== 'diaria' && (
+            <ChipSelector
+              label={periodicidade === 'semanal' ? 'Dia da semana *' : 'Dias da semana *'}
+              options={WEEKDAYS.map((w) => ({ value: String(w.value), label: w.short }))}
+              selected={diasSelecionados.map(String)}
+              multiple={periodicidade === 'dias_especificos'}
+              onSelect={(valStr) => {
+                const val = Number(valStr) as Weekday;
+                if (periodicidade === 'semanal') {
+                  setDiasSelecionados([val]);
+                } else {
+                  setDiasSelecionados((prev) =>
+                    prev.includes(val) ? prev.filter((d) => d !== val) : [...prev, val].sort()
+                  );
+                }
+              }}
+              accentColor={areaAccent.color}
+              accentBg={areaAccent.bg}
+            />
+          )}
+        </View>
+      </AppModal>
+
+      <AppModal
         visible={medModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
+        title={editingMedId ? 'Editar Medicamento' : 'Novo Medicamento'}
+        onClose={() => {
           setMedModalVisible(false);
           limparCamposMed();
         }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>
-              {editingMedId ? 'Editar Medicamento' : 'Novo Medicamento'}
-            </Text>
-
-            <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>Nome do Medicamento *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Losartana, Metformina"
-                placeholderTextColor="#6B7280"
-                value={nomeMed}
-                onChangeText={setNomeMed}
-              />
-
-              <Text style={styles.label}>Dosagem *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: 50mg, 5ml"
-                placeholderTextColor="#6B7280"
-                value={dosagemMed}
-                onChangeText={setDosagemMed}
-              />
-
-              <Text style={styles.label}>Forma Farmacêutica</Text>
-              <View style={styles.selectRow}>
-                {FORMA_OPCOES.map((forma) => (
-                  <TouchableOpacity
-                    key={forma}
-                    style={[styles.selectItem, formaMed === forma && styles.selectItemActive]}
-                    onPress={() => setFormaMed(forma)}
-                  >
-                    <Text style={[styles.selectItemText, formaMed === forma && styles.selectItemTextActive]}>
-                      {forma}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Comprimido, Xarope, Gotas"
-                placeholderTextColor="#6B7280"
-                value={formaMed}
-                onChangeText={setFormaMed}
-              />
-
-              <Text style={styles.label}>Quantidade em Estoque</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: 30, 60"
-                placeholderTextColor="#6B7280"
-                value={estoqueMed}
-                onChangeText={(text) => setEstoqueMed(text.replace(/[^\d]/g, ''))}
-                keyboardType="numeric"
-              />
-
-              <Text style={styles.label}>Médico / Prescritor (RF15)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Dr(a). João Oliveira — UBS Centro"
-                placeholderTextColor="#6B7280"
-                value={prescritorMed}
-                onChangeText={setPrescritorMed}
-              />
-
-              <Text style={styles.label}>Data de Validade (RF17)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: 12/2026 ou 20/11/2026"
-                placeholderTextColor="#6B7280"
-                value={validadeMed}
-                onChangeText={setValidadeMed}
-              />
-
-              <Text style={styles.label}>Orientação de Armazenamento (RF19)</Text>
-              <View style={styles.selectRow}>
-                {ARMAZENAMENTO_OPCOES.map((op) => (
-                  <TouchableOpacity
-                    key={op}
-                    style={[styles.selectItem, armazenamentoMed === op && styles.selectItemActive]}
-                    onPress={() => setArmazenamentoMed(op)}
-                  >
-                    <Text style={[styles.selectItemText, armazenamentoMed === op && styles.selectItemTextActive]}>
-                      {op}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Manter na geladeira (2–8 °C)"
-                placeholderTextColor="#6B7280"
-                value={armazenamentoMed}
-                onChangeText={setArmazenamentoMed}
-              />
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.btnCancelar}
-                onPress={() => {
-                  setMedModalVisible(false);
-                  limparCamposMed();
-                }}
-              >
-                <Text style={styles.btnCancelarText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.btnSalvar, { backgroundColor: '#15803D' }]}
-                onPress={handleSaveMed}
-              >
-                <Text style={styles.btnSalvarText}>{editingMedId ? 'Atualizar' : 'Salvar'}</Text>
-              </TouchableOpacity>
-            </View>
+        footer={
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <AppButton
+              title="Cancelar"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => {
+                setMedModalVisible(false);
+                limparCamposMed();
+              }}
+            />
+            <AppButton
+              title={editingMedId ? 'Atualizar' : 'Salvar'}
+              variant="primary"
+              style={{ flex: 1 }}
+              onPress={handleSaveMed}
+            />
           </View>
+        }
+      >
+        <View>
+          <AppInput
+            label="Nome do Medicamento *"
+            placeholder="Ex: Losartana, Metformina"
+            value={nomeMed}
+            onChangeText={setNomeMed}
+          />
+          <AppInput
+            label="Dosagem *"
+            placeholder="Ex: 50mg, 5ml"
+            value={dosagemMed}
+            onChangeText={setDosagemMed}
+          />
+          <ChipSelector
+            label="Forma Farmacêutica"
+            options={FORMA_OPCOES}
+            selected={formaMed}
+            onSelect={setFormaMed}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+          <AppInput
+            label="Outra forma (ou confirme acima)"
+            placeholder="Ex: Comprimido, Xarope, Gotas"
+            value={formaMed}
+            onChangeText={setFormaMed}
+          />
+          <AppInput
+            label="Quantidade em Estoque"
+            placeholder="Ex: 30"
+            value={estoqueMed}
+            onChangeText={(text) => setEstoqueMed(text.replace(/[^\d]/g, ''))}
+            keyboardType="numeric"
+          />
+          <AppInput
+            label="Médico / Prescritor (opcional)"
+            placeholder="Ex: Dr(a). João Oliveira — UBS Centro"
+            value={prescritorMed}
+            onChangeText={setPrescritorMed}
+          />
+          <AppInput
+            label="Validade (MM/AAAA)"
+            placeholder="Ex: 12/2028"
+            value={validadeMed}
+            onChangeText={(txt) => setValidadeMed(formatarMascaraMesAno(txt))}
+            keyboardType="numeric"
+            maxLength={7}
+          />
+          <ChipSelector
+            label="Orientação de Armazenamento"
+            options={ARMAZENAMENTO_OPCOES}
+            selected={armazenamentoMed}
+            onSelect={setArmazenamentoMed}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+          <AppInput
+            label="Detalhe de Armazenamento (opcional)"
+            placeholder="Ex: Manter na geladeira (2–8 °C)"
+            value={armazenamentoMed}
+            onChangeText={setArmazenamentoMed}
+          />
         </View>
-      </Modal>
-    </SafeAreaView>
+      </AppModal>
+    </ScreenShell>
   );
 }

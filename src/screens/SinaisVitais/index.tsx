@@ -1,17 +1,31 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, ScrollView, Alert, Platform, Modal } from 'react-native';
-import { useStore } from '../../store/useStore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../navigation/AppNavigator';
-import { SinalVital } from '../../types';
+import { Ionicons } from '@expo/vector-icons';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import {
+  AppButton,
+  AppCard,
+  AppModal,
+  ChipSelector,
+  EmptyState,
+  ScreenShell,
+  StatusBadge,
+  StepperInput,
+  useFeedback,
+} from '../../components/ui';
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import { VITALS_LIMITS, obterFaixaGlicose } from '../../services/clinicaHelpers';
-import { styles } from './styles';
 import {
   NOTIFICATION_CHANNELS,
   initializeNotifications,
   sendImmediateNotification,
 } from '../../services/notifications';
+import { getHojeLocalKey } from '../../services/sync';
+import { useStore } from '../../store/useStore';
+import { colors, spacing } from '../../theme/tokens';
+import { SinalVital } from '../../types';
+import { styles } from './styles';
 
 type VitalsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SinaisVitais'>;
 
@@ -31,75 +45,11 @@ const CHECKLIST_CUIDADOS_ITENS = [
   { id: 'ambiente', titulo: 'Ambiente ventilado e seguro', desc: 'Leito organizado, boa ventilação e prevenção de quedas.' },
 ];
 
-const getHojeLocalKey = () => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
 const VITALS_CONFIG = VITALS_LIMITS;
 
-// Stepper numérico inline (substitui VerticalWheelPicker para evitar FlatList dentro de ScrollView)
-const NumericStepperControl = ({
-  min,
-  max,
-  value,
-  onChange,
-  defaultStart,
-}: {
-  min: number;
-  max: number;
-  value: string;
-  onChange: (val: string) => void;
-  defaultStart?: number;
-}) => {
-  const step = (delta: number) => {
-    const parsed = parseInt(value, 10);
-    const base = isNaN(parsed) ? (defaultStart ?? Math.round((min + max) / 2)) : parsed;
-    const next = Math.min(max, Math.max(min, base + delta));
-    onChange(String(next));
-  };
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
-      <TouchableOpacity
-        style={{
-          minWidth: 48,
-          minHeight: 44,
-          borderRadius: 10,
-          backgroundColor: '#E2E8F0',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        onPress={() => step(-1)}
-        accessibilityLabel="Diminuir valor"
-      >
-        <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F172A' }}>−</Text>
-      </TouchableOpacity>
-      <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, color: '#475569', fontWeight: '600' }}>
-        Ajuste fino ({min}–{max})
-      </Text>
-      <TouchableOpacity
-        style={{
-          minWidth: 48,
-          minHeight: 44,
-          borderRadius: 10,
-          backgroundColor: '#E2E8F0',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        onPress={() => step(1)}
-        accessibilityLabel="Aumentar valor"
-      >
-        <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F172A' }}>+</Text>
-      </TouchableOpacity>
-    </View>
-  );
-};
-
 export default function TelaSinaisVitais({ navigation }: Props) {
+  const { showAlert, showToast, confirm } = useFeedback();
+
   const [bpm, setBpm] = useState('');
   const [glucose, setGlucose] = useState('');
   const [glicoseTipo, setGlicoseTipo] = useState<string | null>(null);
@@ -110,12 +60,14 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   const [humor, setHumor] = useState<string | null>(null);
   const [exercicio, setExercicio] = useState<boolean | null>(null);
 
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checklistModalVisible, setChecklistModalVisible] = useState(false);
-  const [chartMetric, setChartMetric] = useState<'bpm' | 'glicose' | 'pressao' | 'oxigenacao' | 'temperatura'>('bpm');
+  const [chartMetric, setChartMetric] = useState<
+    'bpm' | 'glicose' | 'pressao' | 'oxigenacao' | 'temperatura'
+  >('bpm');
 
   const scrollViewRef = useRef<ScrollView>(null);
+  const lastNotificationTime = useRef<Record<string, number>>({});
 
   const addSinalVital = useStore((state) => state.addSinalVital);
   const updateSinalVital = useStore((state) => state.updateSinalVital);
@@ -124,6 +76,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   const checklistCuidados = useStore((state) => state.checklistCuidados);
   const setChecklistCuidados = useStore((state) => state.setChecklistCuidados);
 
+  const areaAccent = colors.areas.enfermagem;
   const hojeKey = getHojeLocalKey();
   const itensChecklistHoje =
     checklistCuidados?.data === hojeKey ? checklistCuidados.itensConcluidos || [] : [];
@@ -136,27 +89,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     setChecklistCuidados({ data: hojeKey, itensConcluidos: next });
   };
 
-  const mostrarAlerta = (titulo: string, mensagem: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-    } else {
-      Alert.alert(titulo, mensagem);
-    }
-  };
-
-  const lastNotificationTime = useRef<Record<string, number>>({});
-
-  // Solicitar permissões de notificação e configurar serviço no mount
   useEffect(() => {
-    initializeNotifications().then((granted) => {
-      if (!granted) {
-        console.log('Permissão para notificações não foi concedida.');
-      }
-    });
+    initializeNotifications().catch(() => {});
   }, []);
 
   const triggerInstantNotification = async (title: string, body: string) => {
-    // Evita spam de alertas idênticos em um intervalo curto (8 segundos)
     const key = `${title}:${body}`;
     const now = Date.now();
     if (lastNotificationTime.current[key] && now - lastNotificationTime.current[key] < 8000) {
@@ -171,126 +108,160 @@ export default function TelaSinaisVitais({ navigation }: Props) {
         channelId: NOTIFICATION_CHANNELS.ALERTAS_SAUDE,
         highPriority: true,
       });
-    } catch (err) {
-      console.log('Falha ao agendar notificação instantânea:', err);
+    } catch {
+      // Ignora em ambiente sem permissão/web
     }
   };
 
-  // Observadores de Alteração com Debounce para alertas em tempo real
   useEffect(() => {
     if (!bpm) return;
-    const delayDebounce = setTimeout(() => {
+    const t = setTimeout(() => {
       const val = parseInt(bpm, 10);
-      if (!isNaN(val) && (val < VITALS_CONFIG.bpm.healthyMin || val > VITALS_CONFIG.bpm.healthyMax)) {
+      if (
+        !isNaN(val) &&
+        (val < VITALS_CONFIG.bpm.healthyMin || val > VITALS_CONFIG.bpm.healthyMax)
+      ) {
         triggerInstantNotification(
-          "⚠️ Alerta: Batimentos Cardíacos",
-          `Sua frequência cardíaca está em ${val} bpm (faixa saudável: ${VITALS_CONFIG.bpm.healthyMin}-${VITALS_CONFIG.bpm.healthyMax} bpm).`
+          'Alerta: Batimentos Cardíacos',
+          `Frequência cardíaca em ${val} bpm (faixa saudável: ${VITALS_CONFIG.bpm.healthyMin}-${VITALS_CONFIG.bpm.healthyMax} bpm).`
         );
       }
-    }, 1200); // 1.2 segundos de debounce para digitação/rolagem assentar
-    return () => clearTimeout(delayDebounce);
+    }, 1200);
+    return () => clearTimeout(t);
   }, [bpm]);
 
   useEffect(() => {
     if (!glucose || !glicoseTipo) return;
-    const delayDebounce = setTimeout(() => {
+    const t = setTimeout(() => {
       const val = parseInt(glucose, 10);
       if (!isNaN(val)) {
-        let gMin = 70;
-        let gMax = 140;
-        if (glicoseTipo === 'Jejum') { gMin = 70; gMax = 99; }
-        else if (glicoseTipo === 'Pré-prandial') { gMin = 70; gMax = 129; }
-        else if (glicoseTipo === 'Pós-prandial') { gMin = 70; gMax = 140; }
-
+        const { min: gMin, max: gMax } = obterFaixaGlicose(glicoseTipo);
         if (val < gMin || val > gMax) {
           triggerInstantNotification(
-            `🩸 Alerta: Glicemia (${glicoseTipo})`,
-            `Sua glicemia está em ${val} mg/dL (faixa saudável: ${gMin}-${gMax} mg/dL).`
+            `Alerta: Glicemia (${glicoseTipo})`,
+            `Glicemia em ${val} mg/dL (faixa saudável: ${gMin}-${gMax} mg/dL).`
           );
         }
       }
     }, 1200);
-    return () => clearTimeout(delayDebounce);
+    return () => clearTimeout(t);
   }, [glucose, glicoseTipo]);
 
   useEffect(() => {
     if (!pressaoSistolica || !pressaoDiastolica) return;
-    const delayDebounce = setTimeout(() => {
+    const t = setTimeout(() => {
       const sys = parseInt(pressaoSistolica, 10);
       const dia = parseInt(pressaoDiastolica, 10);
       if (!isNaN(sys) && !isNaN(dia)) {
-        const alerts = [];
-        if (sys < VITALS_CONFIG.pressaoSistolica.healthyMin || sys > VITALS_CONFIG.pressaoSistolica.healthyMax) {
-          alerts.push(`Sistólica em ${sys} mmHg (saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin}-${VITALS_CONFIG.pressaoSistolica.healthyMax}).`);
+        const alerts: string[] = [];
+        if (
+          sys < VITALS_CONFIG.pressaoSistolica.healthyMin ||
+          sys > VITALS_CONFIG.pressaoSistolica.healthyMax
+        ) {
+          alerts.push(
+            `Sistólica em ${sys} mmHg (saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin}-${VITALS_CONFIG.pressaoSistolica.healthyMax}).`
+          );
         }
-        if (dia < VITALS_CONFIG.pressaoDiastolica.healthyMin || dia > VITALS_CONFIG.pressaoDiastolica.healthyMax) {
-          alerts.push(`Diastólica em ${dia} mmHg (saudável: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}-${VITALS_CONFIG.pressaoDiastolica.healthyMax}).`);
+        if (
+          dia < VITALS_CONFIG.pressaoDiastolica.healthyMin ||
+          dia > VITALS_CONFIG.pressaoDiastolica.healthyMax
+        ) {
+          alerts.push(
+            `Diastólica em ${dia} mmHg (saudável: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}-${VITALS_CONFIG.pressaoDiastolica.healthyMax}).`
+          );
         }
         const diff = sys - dia;
         if (diff < 30) {
-          alerts.push(`Pressão convergente (diferença muito próxima: ${diff} mmHg).`);
+          alerts.push(`Pressão convergente (diferença de ${diff} mmHg).`);
         } else if (diff > 60) {
-          alerts.push(`Pressão divergente (diferença muito distante: ${diff} mmHg).`);
+          alerts.push(`Pressão divergente (diferença de ${diff} mmHg).`);
         }
-
         if (alerts.length > 0) {
-          triggerInstantNotification(
-            "🩺 Alerta: Pressão Arterial",
-            alerts.join('\n')
-          );
+          triggerInstantNotification('Alerta: Pressão Arterial', alerts.join('\n'));
         }
       }
     }, 1200);
-    return () => clearTimeout(delayDebounce);
+    return () => clearTimeout(t);
   }, [pressaoSistolica, pressaoDiastolica]);
 
   useEffect(() => {
     if (!oxigenacao) return;
-    const delayDebounce = setTimeout(() => {
+    const t = setTimeout(() => {
       const val = parseInt(oxigenacao, 10);
       if (!isNaN(val) && val < VITALS_CONFIG.oxigenacao.healthyMin) {
         triggerInstantNotification(
-          "🫁 Alerta: Saturação de Oxigênio",
-          `Sua saturação de oxigênio está em ${val}% (recomendado: >= ${VITALS_CONFIG.oxigenacao.healthyMin}%).`
+          'Alerta: Saturação de Oxigênio',
+          `SpO2 em ${val}% (saudável >= ${VITALS_CONFIG.oxigenacao.healthyMin}%).`
         );
       }
     }, 1200);
-    return () => clearTimeout(delayDebounce);
+    return () => clearTimeout(t);
   }, [oxigenacao]);
 
   useEffect(() => {
-    if (!temperatura || temperatura.endsWith('.')) return;
-    const delayDebounce = setTimeout(() => {
-      const val = parseFloat(temperatura.replace(',', '.'));
-      if (!isNaN(val) && val >= 25 && val <= 43) {
+    if (!temperatura) return;
+    const t = setTimeout(() => {
+      const clean = temperatura.replace(',', '.').trim();
+      if (!clean || clean.endsWith('.')) return;
+      const val = parseFloat(clean);
+      if (!isNaN(val) && val >= 25 && val <= 45) {
         if (val > 37.8) {
           triggerInstantNotification(
-            "🌡️ Alerta: Febre Detectada",
-            `Temperatura corporal em ${val.toFixed(1)} °C (> 37.8 °C). Monitore hidratação e procure avaliação médica se persistir.`
+            'Alerta: Febre Detectada',
+            `Temperatura em ${val.toFixed(1)} °C (> 37.8 °C). Hidrate-se e procure orientação se persistir.`
           );
         } else if (val < 35.0) {
           triggerInstantNotification(
-            "🌡️ Alerta: Hipotermia Detectada",
-            `Temperatura corporal em ${val.toFixed(1)} °C (< 35.0 °C). Aqueça o corpo e procure atendimento de saúde.`
+            'Alerta: Hipotermia Detectada',
+            `Temperatura em ${val.toFixed(1)} °C (< 35.0 °C). Mantenha-se aquecido e procure avaliação clínica.`
           );
         }
       }
     }, 1200);
-    return () => clearTimeout(delayDebounce);
+    return () => clearTimeout(t);
   }, [temperatura]);
 
+  const handleIntInput = (
+    text: string,
+    field: 'bpm' | 'glicose' | 'pressaoSistolica' | 'pressaoDiastolica' | 'oxigenacao'
+  ) => {
+    const config = VITALS_CONFIG[field];
+    const cleaned = text.replace(/[^\d]/g, '');
+    const setFn =
+      field === 'bpm'
+        ? setBpm
+        : field === 'glicose'
+          ? (v: string) => {
+              setGlucose(v);
+              if (!v) setGlicoseTipo(null);
+            }
+          : field === 'pressaoSistolica'
+            ? setPressaoSistolica
+            : field === 'pressaoDiastolica'
+              ? setPressaoDiastolica
+              : setOxigenacao;
+
+    if (!cleaned) {
+      setFn('');
+      return;
+    }
+    const num = parseInt(cleaned, 10);
+    setFn(num > config.max ? String(config.max) : cleaned);
+  };
+
   const handleTempChange = (text: string) => {
-    const normalized = text.replace(',', '.').replace(/[^\d.]/g, '');
-    const parts = normalized.split('.');
-    let formatted = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : normalized;
-    if (parts.length === 2 && parts[1].length > 1) {
-      formatted = `${parts[0]}.${parts[1].slice(0, 1)}`;
+    let cleaned = text.replace(/[^\d.,]/g, '').replace(',', '.');
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      cleaned = parts[0] + '.' + parts.slice(1).join('');
     }
-    const parsed = parseFloat(formatted);
-    if (!isNaN(parsed) && parsed > 43) {
-      formatted = '43.0';
+    if (cleaned.includes('.')) {
+      const [intPart, decPart] = cleaned.split('.');
+      cleaned = intPart.slice(0, 2) + '.' + decPart.slice(0, 1);
+    } else {
+      cleaned = cleaned.slice(0, 2);
     }
-    setTemperatura(formatted);
+    setTemperatura(cleaned);
   };
 
   const resetForm = () => {
@@ -303,7 +274,6 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     setTemperatura('');
     setHumor(null);
     setExercicio(null);
-    setFocusedInput(null);
     setEditingId(null);
   };
 
@@ -326,81 +296,25 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     setTemperatura(registro.temperatura || '');
     setHumor(registro.humor || null);
     setExercicio(registro.exercicio !== undefined ? registro.exercicio : null);
-    setFocusedInput(null);
-
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const handleDeleteRecord = (id: string) => {
-    const executarExclusao = () => {
-      removeSinalVital(id);
-      if (editingId === id) {
-        resetForm();
-      }
-    };
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm('Excluir registro\n\nDeseja realmente remover esta medição dos últimos registros?')) {
-        executarExclusao();
-      }
-      return;
-    }
-
-    Alert.alert(
-      'Excluir registro',
-      'Deseja realmente remover esta medição dos últimos registros?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Excluir', style: 'destructive', onPress: executarExclusao },
-      ]
-    );
+    confirm({
+      title: 'Excluir registro',
+      message: 'Deseja realmente remover esta medição dos últimos registros?',
+      confirmText: 'Excluir',
+      destructive: true,
+      onConfirm: () => {
+        removeSinalVital(id);
+        if (editingId === id) {
+          resetForm();
+        }
+        showToast('Medição removida.', 'info');
+      },
+    });
   };
 
-  const handleInputChange = (text: string, field: keyof typeof VITALS_CONFIG) => {
-    const config = VITALS_CONFIG[field];
-    const cleaned = text.replace(/[^\d]/g, '');
-    if (cleaned === '') {
-      if (field === 'bpm') setBpm('');
-      else if (field === 'glicose') {
-        setGlucose('');
-        setGlicoseTipo(null);
-      }
-      else if (field === 'pressaoSistolica') setPressaoSistolica('');
-      else if (field === 'pressaoDiastolica') setPressaoDiastolica('');
-      else if (field === 'oxigenacao') setOxigenacao('');
-      return;
-    }
-
-    const value = parseInt(cleaned, 10);
-    // Limita ao máximo absoluto no momento da digitação
-    const finalValue = value > config.max ? config.max.toString() : cleaned;
-
-    if (field === 'bpm') setBpm(finalValue);
-    else if (field === 'glicose') setGlucose(finalValue);
-    else if (field === 'pressaoSistolica') setPressaoSistolica(finalValue);
-    else if (field === 'pressaoDiastolica') setPressaoDiastolica(finalValue);
-    else if (field === 'oxigenacao') setOxigenacao(finalValue);
-  };
-
-  const handleBlur = (field: keyof typeof VITALS_CONFIG, currentValue: string) => {
-    setFocusedInput(null);
-    if (currentValue === '') return;
-    
-    const config = VITALS_CONFIG[field];
-    const value = parseInt(currentValue, 10);
-    
-    // Corrige para o mínimo absoluto no blur
-    if (value < config.min) {
-      const minStr = config.min.toString();
-      if (field === 'bpm') setBpm(minStr);
-      else if (field === 'glicose') setGlucose(minStr);
-      else if (field === 'pressaoSistolica') setPressaoSistolica(minStr);
-      else if (field === 'pressaoDiastolica') setPressaoDiastolica(minStr);
-      else if (field === 'oxigenacao') setOxigenacao(minStr);
-    }
-  };
-
-  // Mantemos a validação e alertas secundários no botão Salvar
   const checkVitalsAndNotifyOnSave = async (
     bpmVal: number,
     glucoseVal: number,
@@ -412,63 +326,83 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   ): Promise<boolean> => {
     const alerts: string[] = [];
 
-    if (!isNaN(bpmVal) && (bpmVal < VITALS_CONFIG.bpm.healthyMin || bpmVal > VITALS_CONFIG.bpm.healthyMax)) {
-      alerts.push(`💓 Batimentos Cardíacos: ${bpmVal} bpm (saudável: ${VITALS_CONFIG.bpm.healthyMin}-${VITALS_CONFIG.bpm.healthyMax})`);
+    if (
+      !isNaN(bpmVal) &&
+      (bpmVal < VITALS_CONFIG.bpm.healthyMin || bpmVal > VITALS_CONFIG.bpm.healthyMax)
+    ) {
+      alerts.push(
+        `Batimentos Cardíacos: ${bpmVal} bpm (saudável: ${VITALS_CONFIG.bpm.healthyMin}-${VITALS_CONFIG.bpm.healthyMax})`
+      );
     }
 
     if (!isNaN(glucoseVal) && glucoseTypeVal) {
       const { min: gMin, max: gMax } = obterFaixaGlicose(glucoseTypeVal);
-
       if (glucoseVal < gMin || glucoseVal > gMax) {
-        alerts.push(`🩸 Glicemia (${glucoseTypeVal}): ${glucoseVal} mg/dL (saudável: ${gMin}-${gMax})`);
+        alerts.push(
+          `Glicemia (${glucoseTypeVal}): ${glucoseVal} mg/dL (saudável: ${gMin}-${gMax})`
+        );
       }
     }
 
-    if (!isNaN(sysVal) && (sysVal < VITALS_CONFIG.pressaoSistolica.healthyMin || sysVal > VITALS_CONFIG.pressaoSistolica.healthyMax)) {
-      alerts.push(`🩺 Pressão Sistólica: ${sysVal} mmHg (saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin}-${VITALS_CONFIG.pressaoSistolica.healthyMax})`);
+    if (
+      !isNaN(sysVal) &&
+      (sysVal < VITALS_CONFIG.pressaoSistolica.healthyMin ||
+        sysVal > VITALS_CONFIG.pressaoSistolica.healthyMax)
+    ) {
+      alerts.push(
+        `Pressão Sistólica: ${sysVal} mmHg (saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin}-${VITALS_CONFIG.pressaoSistolica.healthyMax})`
+      );
     }
 
-    if (!isNaN(diaVal) && (diaVal < VITALS_CONFIG.pressaoDiastolica.healthyMin || diaVal > VITALS_CONFIG.pressaoDiastolica.healthyMax)) {
-      alerts.push(`🩺 Pressão Diastólica: ${diaVal} mmHg (saudável: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}-${VITALS_CONFIG.pressaoDiastolica.healthyMax})`);
+    if (
+      !isNaN(diaVal) &&
+      (diaVal < VITALS_CONFIG.pressaoDiastolica.healthyMin ||
+        diaVal > VITALS_CONFIG.pressaoDiastolica.healthyMax)
+    ) {
+      alerts.push(
+        `Pressão Diastólica: ${diaVal} mmHg (saudável: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}-${VITALS_CONFIG.pressaoDiastolica.healthyMax})`
+      );
     }
 
     if (!isNaN(sysVal) && !isNaN(diaVal)) {
       const pulsePressure = sysVal - diaVal;
       if (pulsePressure < 30) {
-        alerts.push(`⚠️ Pressão Convergente (diferença de ${pulsePressure} mmHg está muito próxima)`);
+        alerts.push(`Pressão convergente (diferença de ${pulsePressure} mmHg).`);
       } else if (pulsePressure > 60) {
-        alerts.push(`⚠️ Pressão Divergente (diferença de ${pulsePressure} mmHg está muito distante)`);
+        alerts.push(`Pressão divergente (diferença de ${pulsePressure} mmHg).`);
       }
     }
 
     if (!isNaN(oxVal) && oxVal < VITALS_CONFIG.oxigenacao.healthyMin) {
-      alerts.push(`🫁 Saturação de Oxigênio: ${oxVal}% (saudável >= ${VITALS_CONFIG.oxigenacao.healthyMin}%)`);
+      alerts.push(
+        `Saturação de Oxigênio: ${oxVal}% (saudável >= ${VITALS_CONFIG.oxigenacao.healthyMin}%)`
+      );
     }
 
     if (!isNaN(tempVal)) {
       if (tempVal > 37.8) {
-        alerts.push(`🌡️ Temperatura Corporal: ${tempVal.toFixed(1)} °C — Atenção: Febre (> 37.8 °C)`);
+        alerts.push(`Temperatura Corporal: ${tempVal.toFixed(1)} °C — Febre (> 37.8 °C)`);
       } else if (tempVal < 35.0) {
-        alerts.push(`🌡️ Temperatura Corporal: ${tempVal.toFixed(1)} °C — Atenção: Hipotermia (< 35.0 °C)`);
+        alerts.push(`Temperatura Corporal: ${tempVal.toFixed(1)} °C — Hipotermia (< 35.0 °C)`);
       }
     }
 
     if (alerts.length > 0) {
-      // Dispara notificação nativa final de resumo
       try {
         await sendImmediateNotification({
-          title: "🚨 Resumo de Sinais Vitais Fora da Faixa!",
+          title: 'Resumo de Sinais Vitais Fora da Faixa',
           body: alerts.join('\n'),
           channelId: NOTIFICATION_CHANNELS.ALERTAS_SAUDE,
         });
-      } catch (err) {
-        console.log('Falha ao agendar notificação:', err);
+      } catch {
+        // Ignora falha de permissão
       }
 
-      // Alerta visual no app
-      mostrarAlerta(
-        '🚨 Alerta de Saúde',
-        'Os seguintes sinais vitais registrados requerem atenção:\n\n' + alerts.map(a => '• ' + a).join('\n\n') + '\n\nRecomendamos que repouse e consulte um médico se os sintomas persistirem.'
+      showAlert(
+        'Alerta Clínico',
+        'Os seguintes sinais registrados requerem atenção:\n\n' +
+          alerts.map((a) => `• ${a}`).join('\n') +
+          '\n\nRepouse e procure avaliação profissional se os valores persistirem.'
       );
       return true;
     }
@@ -477,25 +411,40 @@ export default function TelaSinaisVitais({ navigation }: Props) {
 
   const hasGlucose = glucose.length > 0;
   const isGlucoseValid = !hasGlucose || (hasGlucose && glicoseTipo !== null);
-  const isPressaoValid = (pressaoSistolica.length > 0 && pressaoDiastolica.length > 0) || (pressaoSistolica.length === 0 && pressaoDiastolica.length === 0);
+  const isPressaoValid =
+    (pressaoSistolica.length > 0 && pressaoDiastolica.length > 0) ||
+    (pressaoSistolica.length === 0 && pressaoDiastolica.length === 0);
   const tempClean = temperatura.replace(',', '.').trim();
   const tempParsed = tempClean ? parseFloat(tempClean) : NaN;
-  const isTempValid = !tempClean || (!isNaN(tempParsed) && tempParsed >= 30 && tempParsed <= 43 && !tempClean.endsWith('.'));
-  const hasAnyVital = bpm.length > 0 || hasGlucose || (pressaoSistolica.length > 0 && pressaoDiastolica.length > 0) || oxigenacao.length > 0 || tempClean.length > 0 || humor !== null || exercicio !== null;
-
+  const isTempValid =
+    !tempClean || (!isNaN(tempParsed) && tempParsed >= 30 && tempParsed <= 43 && !tempClean.endsWith('.'));
+  const hasAnyVital =
+    bpm.length > 0 ||
+    hasGlucose ||
+    (pressaoSistolica.length > 0 && pressaoDiastolica.length > 0) ||
+    oxigenacao.length > 0 ||
+    tempClean.length > 0 ||
+    humor !== null ||
+    exercicio !== null;
   const isFormValid = hasAnyVital && isGlucoseValid && isPressaoValid && isTempValid;
 
   const handleSave = () => {
     try {
       if (!isFormValid) {
         if (!isGlucoseValid) {
-          mostrarAlerta('Ops!', 'Como a glicose foi preenchida, o tipo de medição (Jejum, Pré-prandial ou Pós-prandial) é obrigatório.');
+          showAlert(
+            'Atenção',
+            'Como a glicose foi preenchida, selecione o tipo de medição (Jejum, Pré-prandial ou Pós-prandial).'
+          );
         } else if (!isPressaoValid) {
-          mostrarAlerta('Ops!', 'Para registrar a pressão arterial, preencha tanto a Sistólica quanto a Diastólica.');
+          showAlert(
+            'Atenção',
+            'Para registrar a pressão arterial, preencha tanto a Sistólica quanto a Diastólica.'
+          );
         } else if (!isTempValid) {
-          mostrarAlerta('Ops!', 'Informe uma temperatura corporal válida entre 30.0 °C e 43.0 °C.');
+          showAlert('Atenção', 'Informe uma temperatura corporal válida entre 30.0 °C e 43.0 °C.');
         } else {
-          mostrarAlerta('Atenção', 'Por favor, preencha pelo menos um sinal vital ou informação para registrar.');
+          showAlert('Atenção', 'Preencha pelo menos um sinal vital ou informação para registrar.');
         }
         return;
       }
@@ -507,7 +456,8 @@ export default function TelaSinaisVitais({ navigation }: Props) {
       const oxNum = parseInt(oxigenacao, 10);
       const tempNum = tempClean ? parseFloat(tempClean) : NaN;
 
-      const pressaoConsolidada = (pressaoSistolica && pressaoDiastolica) ? `${pressaoSistolica}/${pressaoDiastolica}` : undefined;
+      const pressaoConsolidada =
+        pressaoSistolica && pressaoDiastolica ? `${pressaoSistolica}/${pressaoDiastolica}` : undefined;
       const payload = {
         bpm,
         glicose: glucose,
@@ -527,32 +477,117 @@ export default function TelaSinaisVitais({ navigation }: Props) {
       }
 
       const msgSucesso = estavaEditando
-        ? 'Registro de sinais vitais atualizado com sucesso. ✏️'
-        : 'Seus sinais vitais foram registrados com sucesso. 🩺';
+        ? 'Medição de sinais vitais atualizada com sucesso.'
+        : 'Sinais vitais registrados com sucesso.';
 
-      // Validação final de salvamento
       checkVitalsAndNotifyOnSave(bpmNum, glucoseNum, glicoseTipo, sysNum, diaNum, oxNum, tempNum)
         .then((hadAlerts) => {
           if (!hadAlerts) {
-            mostrarAlerta('Excelente!', msgSucesso);
+            showToast(msgSucesso, 'success');
           }
         })
-        .catch((err) => {
-          console.log('Erro ao analisar alertas:', err);
-          mostrarAlerta('Excelente!', msgSucesso);
+        .catch(() => {
+          showToast(msgSucesso, 'success');
         });
 
       resetForm();
-    } catch (e: any) {
-      console.log('Erro no salvamento:', e);
-      mostrarAlerta('Erro', 'Ocorreu um erro inesperado ao salvar: ' + e.message);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Falha inesperada.';
+      showAlert('Erro', `Ocorreu um erro ao salvar: ${msg}`);
     }
   };
 
-  const hasValidTempPreview =
-    tempClean.length >= 2 && !tempClean.endsWith('.') && !isNaN(tempParsed) && tempParsed >= 25 && tempParsed <= 43;
-  const isFebre = hasValidTempPreview && tempParsed > 37.8;
-  const isHipotermia = hasValidTempPreview && tempParsed < 35.0;
+  // Feedbacks inline para StepperInput
+  const bpmFeedback = useMemo(() => {
+    const v = parseInt(bpm, 10);
+    if (!bpm || isNaN(v)) return null;
+    if (v < VITALS_CONFIG.bpm.healthyMin || v > VITALS_CONFIG.bpm.healthyMax) {
+      return {
+        tone: 'danger' as const,
+        label: 'Atenção',
+        detail: `Referência repouso: ${VITALS_CONFIG.bpm.healthyMin}–${VITALS_CONFIG.bpm.healthyMax} bpm.`,
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [bpm]);
+
+  const glicoseFeedback = useMemo(() => {
+    const v = parseInt(glucose, 10);
+    if (!glucose || isNaN(v)) return null;
+    const faixa = obterFaixaGlicose(glicoseTipo);
+    if (v < faixa.min || v > faixa.max) {
+      return {
+        tone: 'danger' as const,
+        label: 'Fora da faixa',
+        detail: `Referência ${glicoseTipo || 'geral'}: ${faixa.min}–${faixa.max} mg/dL.`,
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [glucose, glicoseTipo]);
+
+  const sysFeedback = useMemo(() => {
+    const v = parseInt(pressaoSistolica, 10);
+    if (!pressaoSistolica || isNaN(v)) return null;
+    if (
+      v < VITALS_CONFIG.pressaoSistolica.healthyMin ||
+      v > VITALS_CONFIG.pressaoSistolica.healthyMax
+    ) {
+      return {
+        tone: 'warning' as const,
+        label: v > VITALS_CONFIG.pressaoSistolica.healthyMax ? 'Elevada' : 'Baixa',
+        detail: `Referência: ${VITALS_CONFIG.pressaoSistolica.healthyMin}–${VITALS_CONFIG.pressaoSistolica.healthyMax} mmHg.`,
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [pressaoSistolica]);
+
+  const diaFeedback = useMemo(() => {
+    const v = parseInt(pressaoDiastolica, 10);
+    if (!pressaoDiastolica || isNaN(v)) return null;
+    if (
+      v < VITALS_CONFIG.pressaoDiastolica.healthyMin ||
+      v > VITALS_CONFIG.pressaoDiastolica.healthyMax
+    ) {
+      return {
+        tone: 'warning' as const,
+        label: v > VITALS_CONFIG.pressaoDiastolica.healthyMax ? 'Elevada' : 'Baixa',
+        detail: `Referência: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}–${VITALS_CONFIG.pressaoDiastolica.healthyMax} mmHg.`,
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [pressaoDiastolica]);
+
+  const oxFeedback = useMemo(() => {
+    const v = parseInt(oxigenacao, 10);
+    if (!oxigenacao || isNaN(v)) return null;
+    if (v < VITALS_CONFIG.oxigenacao.healthyMin) {
+      return {
+        tone: 'danger' as const,
+        label: 'Baixa',
+        detail: `Recomendado >= ${VITALS_CONFIG.oxigenacao.healthyMin}%.`,
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [oxigenacao]);
+
+  const tempFeedback = useMemo(() => {
+    if (!tempClean || tempClean.endsWith('.') || isNaN(tempParsed) || tempParsed < 25) return null;
+    if (tempParsed > 37.8) {
+      return {
+        tone: 'danger' as const,
+        label: 'Febre',
+        detail: 'Acima de 37.8 °C. Hidrate-se e monitore.',
+      };
+    }
+    if (tempParsed < 35.0) {
+      return {
+        tone: 'info' as const,
+        label: 'Hipotermia',
+        detail: 'Abaixo de 35.0 °C. Aqueça-se e procure orientação.',
+      };
+    }
+    return { tone: 'success' as const, label: 'Normal' };
+  }, [tempClean, tempParsed]);
 
   const chartConfig = useMemo(() => {
     const metrics: {
@@ -562,11 +597,38 @@ export default function TelaSinaisVitais({ navigation }: Props) {
       unit: string;
       maxScale?: number;
     }[] = [
-      { id: 'bpm', label: '❤️ BPM', subtitle: `Faixa saudável: ${VITALS_CONFIG.bpm.healthyMin} a ${VITALS_CONFIG.bpm.healthyMax} bpm`, unit: '' },
-      { id: 'glicose', label: '🩸 Glicose', subtitle: `Referência geral: ${VITALS_CONFIG.glicose.healthyMin} a ${VITALS_CONFIG.glicose.healthyMax} mg/dL`, unit: '' },
-      { id: 'pressao', label: '🩺 Pressão', subtitle: `Pressão Sistólica saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin} a ${VITALS_CONFIG.pressaoSistolica.healthyMax} mmHg`, unit: '' },
-      { id: 'oxigenacao', label: '🫁 SpO2', subtitle: `Saturação de oxigênio (recomendado ≥ ${VITALS_CONFIG.oxigenacao.healthyMin}%)`, unit: '%', maxScale: 100 },
-      { id: 'temperatura', label: '🌡️ Temp.', subtitle: `Temperatura corporal normal: ${VITALS_CONFIG.temperatura.healthyMin.toFixed(1)} a ${VITALS_CONFIG.temperatura.healthyMax.toFixed(1)} °C`, unit: '°', maxScale: 43 },
+      {
+        id: 'bpm',
+        label: 'BPM',
+        subtitle: `Faixa saudável: ${VITALS_CONFIG.bpm.healthyMin} a ${VITALS_CONFIG.bpm.healthyMax} bpm`,
+        unit: '',
+      },
+      {
+        id: 'glicose',
+        label: 'Glicose',
+        subtitle: `Referência geral: ${VITALS_CONFIG.glicose.healthyMin} a ${VITALS_CONFIG.glicose.healthyMax} mg/dL`,
+        unit: '',
+      },
+      {
+        id: 'pressao',
+        label: 'Pressão',
+        subtitle: `Sistólica saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin} a ${VITALS_CONFIG.pressaoSistolica.healthyMax} mmHg`,
+        unit: '',
+      },
+      {
+        id: 'oxigenacao',
+        label: 'SpO₂',
+        subtitle: `Saturação recomendada >= ${VITALS_CONFIG.oxigenacao.healthyMin}%`,
+        unit: '%',
+        maxScale: 100,
+      },
+      {
+        id: 'temperatura',
+        label: 'Temp.',
+        subtitle: `Temperatura normal: ${VITALS_CONFIG.temperatura.healthyMin.toFixed(1)} a ${VITALS_CONFIG.temperatura.healthyMax.toFixed(1)} °C`,
+        unit: '°',
+        maxScale: 43,
+      },
     ];
 
     const current = metrics.find((m) => m.id === chartMetric) || metrics[0];
@@ -583,7 +645,10 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             label,
             value: val,
             displayValue: `${val}`,
-            color: val < 50 || val > 120 ? '#EF4444' : '#10B981',
+            color:
+              val < VITALS_CONFIG.bpm.healthyMin || val > VITALS_CONFIG.bpm.healthyMax
+                ? colors.semantic.danger
+                : colors.semantic.success,
           });
         }
       } else if (chartMetric === 'glicose' && h.glicose) {
@@ -593,7 +658,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             label,
             value: val,
             displayValue: `${val}`,
-            color: val < 70 || val > 140 ? '#EF4444' : '#10B981',
+            color: val < 70 || val > 140 ? colors.semantic.danger : colors.semantic.success,
           });
         }
       } else if (chartMetric === 'pressao' && h.pressao) {
@@ -607,8 +672,8 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             color:
               sysVal < VITALS_CONFIG.pressaoSistolica.healthyMin ||
               sysVal > VITALS_CONFIG.pressaoSistolica.healthyMax
-                ? '#EF4444'
-                : '#10B981',
+                ? colors.semantic.danger
+                : colors.semantic.success,
           });
         }
       } else if (chartMetric === 'oxigenacao' && h.oxigenacao) {
@@ -618,7 +683,10 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             label,
             value: val,
             displayValue: `${val}%`,
-            color: val < 95 ? '#EF4444' : '#10B981',
+            color:
+              val < VITALS_CONFIG.oxigenacao.healthyMin
+                ? colors.semantic.danger
+                : colors.semantic.success,
           });
         }
       } else if (chartMetric === 'temperatura' && h.temperatura) {
@@ -628,7 +696,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             label,
             value: val,
             displayValue: `${val.toFixed(1)}°`,
-            color: val > 37.8 || val < 35.0 ? '#EF4444' : '#10B981',
+            color: val > 37.8 || val < 35.0 ? colors.semantic.danger : colors.semantic.success,
           });
         }
       }
@@ -642,376 +710,215 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   }, [historico, chartMetric]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        ref={scrollViewRef}
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Sinais Vitais (Enfermagem)</Text>
-          <Text style={styles.subtitle}>Acompanhe seus indicadores físicos e de enfermagem para controle diário</Text>
-        </View>
-
+    <ScreenShell
+      title="Sinais Vitais"
+      subtitle="Acompanhamento de enfermagem, alertas clínicos e cuidados diários."
+      areaBadge={{ label: 'Enfermagem', color: areaAccent.color, bg: areaAccent.bg }}
+      scrollRef={scrollViewRef}
+      onBack={() => navigation.goBack()}
+    >
+      <View style={styles.stack}>
         {editingId && (
-          <View style={styles.editingBanner}>
-            <Text style={styles.editingBannerText}>
-              ✏️ Editando uma medição existente. Ajuste os campos e toque em Salvar Alterações.
-            </Text>
-            <TouchableOpacity style={styles.editingCancelBtn} onPress={resetForm}>
-              <Text style={styles.editingCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
+          <AppCard variant="alert" tone="warning">
+            <View style={styles.editingRow}>
+              <Ionicons name="create-outline" size={20} color={colors.semantic.warning} />
+              <Text style={styles.editingText}>
+                Editando uma medição existente. Ajuste os valores e toque em Salvar Alterações.
+              </Text>
+              <AppButton title="Cancelar" variant="outline" compact onPress={resetForm} />
+            </View>
+          </AppCard>
         )}
 
-        <View style={styles.card}>
-          {/* Batimentos Cardiacos */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelContainer}>
-              <View style={[styles.iconContainer, { backgroundColor: '#FEE2E2' }]}>
-                <Text>❤️</Text>
-              </View>
-              <Text style={styles.label}>
-                Batimentos Cardíacos {bpm ? `(${bpm} bpm)` : ''}
-              </Text>
+        <AppCard variant="elevated">
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="pulse-outline" size={20} color={areaAccent.color} />
+              <Text style={styles.sectionTitle}>Nova Aferição de Sinais Vitais</Text>
             </View>
-            <TextInput 
-              placeholderTextColor="#A0A0AB"
-              style={[styles.input, focusedInput === 'bpm' && styles.inputFocused]}
-              placeholder="Ex: 75"
-              keyboardType="numeric"
-              value={bpm}
-              onChangeText={(text) => handleInputChange(text, 'bpm')}
-              onFocus={() => setFocusedInput('bpm')}
-              onBlur={() => handleBlur('bpm', bpm)}
-              maxLength={3}
+          </View>
+
+          <StepperInput
+            label="Batimentos Cardíacos (FC)"
+            value={bpm}
+            onChangeText={(t) => handleIntInput(t, 'bpm')}
+            min={VITALS_CONFIG.bpm.min}
+            max={VITALS_CONFIG.bpm.max}
+            defaultStart={75}
+            unit="bpm"
+            placeholder="Ex: 72"
+            statusFeedback={bpmFeedback}
+          />
+
+          <StepperInput
+            label="Glicemia Capilar"
+            value={glucose}
+            onChangeText={(t) => handleIntInput(t, 'glicose')}
+            min={VITALS_CONFIG.glicose.min}
+            max={VITALS_CONFIG.glicose.max}
+            defaultStart={95}
+            unit="mg/dL"
+            placeholder="Ex: 98"
+            statusFeedback={glicoseFeedback}
+          />
+
+          {hasGlucose && (
+            <ChipSelector
+              label="Momento da medição de glicemia *"
+              options={[...GLICOSE_TIPOS]}
+              selected={glicoseTipo}
+              onSelect={(t) => setGlicoseTipo(t)}
+              accentColor={areaAccent.color}
+              accentBg={areaAccent.bg}
             />
-            {focusedInput === 'bpm' && (
-              <NumericStepperControl
-                min={VITALS_CONFIG.bpm.min}
-                max={VITALS_CONFIG.bpm.max}
-                value={bpm}
-                defaultStart={75}
-                onChange={(val) => handleInputChange(val, 'bpm')}
-              />
-            )}
-          </View>
+          )}
 
-          {/* Glicose */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelContainer}>
-              <View style={[styles.iconContainer, { backgroundColor: '#DBEAFE' }]}>
-                <Text>🩸</Text>
-              </View>
-              <Text style={styles.label}>
-                Glicemia {glucose ? `(${glucose} mg/dL)` : ''}
-              </Text>
+          <View style={styles.formDivider} />
+
+          <StepperInput
+            label="Pressão Sistólica (Máxima)"
+            value={pressaoSistolica}
+            onChangeText={(t) => handleIntInput(t, 'pressaoSistolica')}
+            min={VITALS_CONFIG.pressaoSistolica.min}
+            max={VITALS_CONFIG.pressaoSistolica.max}
+            defaultStart={120}
+            unit="mmHg"
+            placeholder="Ex: 120"
+            statusFeedback={sysFeedback}
+          />
+
+          <StepperInput
+            label="Pressão Diastólica (Mínima)"
+            value={pressaoDiastolica}
+            onChangeText={(t) => handleIntInput(t, 'pressaoDiastolica')}
+            min={VITALS_CONFIG.pressaoDiastolica.min}
+            max={VITALS_CONFIG.pressaoDiastolica.max}
+            defaultStart={80}
+            unit="mmHg"
+            placeholder="Ex: 80"
+            statusFeedback={diaFeedback}
+          />
+
+          <StepperInput
+            label="Saturação de Oxigênio (SpO₂)"
+            value={oxigenacao}
+            onChangeText={(t) => handleIntInput(t, 'oxigenacao')}
+            min={VITALS_CONFIG.oxigenacao.min}
+            max={VITALS_CONFIG.oxigenacao.max}
+            defaultStart={98}
+            unit="%"
+            placeholder="Ex: 98"
+            statusFeedback={oxFeedback}
+          />
+
+          <StepperInput
+            label="Temperatura Corporal"
+            value={temperatura}
+            onChangeText={handleTempChange}
+            min={VITALS_CONFIG.temperatura.min}
+            max={VITALS_CONFIG.temperatura.max}
+            step={0.1}
+            defaultStart={36.5}
+            decimal
+            maxLength={4}
+            unit="°C"
+            placeholder="Ex: 36.6"
+            statusFeedback={tempFeedback}
+          />
+
+          <View style={styles.formDivider} />
+
+          <ChipSelector
+            label="Estado geral no momento (opcional)"
+            options={BASIC_MOODS}
+            selected={humor}
+            onSelect={(m) => setHumor(humor === m ? null : m)}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <ChipSelector
+            label="Praticou atividade física hoje? (opcional)"
+            options={[
+              { value: 'sim', label: 'Sim' },
+              { value: 'nao', label: 'Não' },
+            ]}
+            selected={exercicio === true ? 'sim' : exercicio === false ? 'nao' : null}
+            onSelect={(v) => {
+              const boolVal = v === 'sim';
+              setExercicio(exercicio === boolVal ? null : boolVal);
+            }}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
+          <AppButton
+            title={editingId ? 'Salvar Alterações' : 'Salvar Sinais Vitais'}
+            icon="checkmark-circle-outline"
+            variant="primary"
+            onPress={handleSave}
+          />
+        </AppCard>
+
+        <AppCard variant="default">
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={colors.semantic.success} />
+              <Text style={styles.sectionTitle}>Checklist Diário de Cuidados</Text>
             </View>
-            <TextInput 
-              placeholderTextColor="#A0A0AB"
-              style={[styles.input, focusedInput === 'glicose' && styles.inputFocused]}
-              placeholder="Ex: 90"
-              keyboardType="numeric"
-              value={glucose}
-              onChangeText={(text) => handleInputChange(text, 'glicose')}
-              onFocus={() => setFocusedInput('glicose')}
-              onBlur={() => handleBlur('glicose', glucose)}
-              maxLength={3}
+            <StatusBadge
+              label={`${itensChecklistHoje.length}/${CHECKLIST_CUIDADOS_ITENS.length} hoje`}
+              tone={
+                itensChecklistHoje.length === CHECKLIST_CUIDADOS_ITENS.length ? 'success' : 'info'
+              }
             />
-            {focusedInput === 'glicose' && (
-              <NumericStepperControl
-                min={VITALS_CONFIG.glicose.min}
-                max={VITALS_CONFIG.glicose.max}
-                value={glucose}
-                defaultStart={95}
-                onChange={(val) => handleInputChange(val, 'glicose')}
-              />
-            )}
-            {glucose.length > 0 && (
-              <View style={{ marginTop: 8 }}>
-                <Text style={[styles.label, { fontSize: 14, color: glicoseTipo ? '#3B82F6' : '#EF4444' }]}>
-                  Tipo de Medição * {glicoseTipo ? `(${glicoseTipo})` : '(Obrigatório)'}
-                </Text>
-                <View style={styles.glicoseChipsContainer}>
-                  {GLICOSE_TIPOS.map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      style={[
-                        styles.glicoseChip,
-                        glicoseTipo === t && styles.glicoseChipSelected
-                      ]}
-                      onPress={() => setGlicoseTipo(t)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[
-                        styles.glicoseChipText,
-                        glicoseTipo === t && styles.glicoseChipTextSelected
-                      ]}>
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
           </View>
-
-          {/* Pressão Arterial */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelContainer}>
-              <View style={[styles.iconContainer, { backgroundColor: '#E0E7FF' }]}>
-                <Text>🩺</Text>
-              </View>
-              <Text style={styles.label}>
-                Pressão Arterial {pressaoSistolica && pressaoDiastolica ? ` (${pressaoSistolica}/${pressaoDiastolica} mmHg)` : ''}
-              </Text>
-            </View>
-            <View style={styles.rowInputs}>
-              <View style={styles.rowInputContainer}>
-                <Text style={[styles.label, { fontSize: 13, marginBottom: 4, color: '#6B7280' }]}>Sistólica</Text>
-                <TextInput 
-                  placeholderTextColor="#A0A0AB"
-                  style={[styles.input, focusedInput === 'pressaoSistolica' && styles.inputFocused]}
-                  placeholder="Ex: 120"
-                  keyboardType="numeric"
-                  value={pressaoSistolica}
-                  onChangeText={(text) => handleInputChange(text, 'pressaoSistolica')}
-                  onFocus={() => setFocusedInput('pressaoSistolica')}
-                  onBlur={() => handleBlur('pressaoSistolica', pressaoSistolica)}
-                  maxLength={3}
-                />
-              </View>
-              <View style={styles.rowInputContainer}>
-                <Text style={[styles.label, { fontSize: 13, marginBottom: 4, color: '#6B7280' }]}>Diastólica</Text>
-                <TextInput 
-                  placeholderTextColor="#A0A0AB"
-                  style={[styles.input, focusedInput === 'pressaoDiastolica' && styles.inputFocused]}
-                  placeholder="Ex: 80"
-                  keyboardType="numeric"
-                  value={pressaoDiastolica}
-                  onChangeText={(text) => handleInputChange(text, 'pressaoDiastolica')}
-                  onFocus={() => setFocusedInput('pressaoDiastolica')}
-                  onBlur={() => handleBlur('pressaoDiastolica', pressaoDiastolica)}
-                  maxLength={3}
-                />
-              </View>
-            </View>
-            {focusedInput === 'pressaoSistolica' && (
-              <NumericStepperControl
-                min={VITALS_CONFIG.pressaoSistolica.min}
-                max={VITALS_CONFIG.pressaoSistolica.max}
-                value={pressaoSistolica}
-                defaultStart={120}
-                onChange={(val) => handleInputChange(val, 'pressaoSistolica')}
-              />
-            )}
-            {focusedInput === 'pressaoDiastolica' && (
-              <NumericStepperControl
-                min={VITALS_CONFIG.pressaoDiastolica.min}
-                max={VITALS_CONFIG.pressaoDiastolica.max}
-                value={pressaoDiastolica}
-                defaultStart={80}
-                onChange={(val) => handleInputChange(val, 'pressaoDiastolica')}
-              />
-            )}
-          </View>
-          
-          {/* Oxigenacao */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelContainer}>
-              <View style={[styles.iconContainer, { backgroundColor: '#E0F2FE' }]}>
-                <Text>🫁</Text>
-              </View>
-              <Text style={styles.label}>
-                Saturação de Oxigênio {oxigenacao ? `(${oxigenacao}%)` : ''}
-              </Text>
-            </View>
-            <TextInput 
-              placeholderTextColor="#A0A0AB"
-              style={[styles.input, focusedInput === 'oxigenacao' && styles.inputFocused]}
-              placeholder="Ex: 98"
-              keyboardType="numeric"
-              value={oxigenacao}
-              onChangeText={(text) => handleInputChange(text, 'oxigenacao')}
-              onFocus={() => setFocusedInput('oxigenacao')}
-              onBlur={() => handleBlur('oxigenacao', oxigenacao)}
-              maxLength={3}
-            />
-            {focusedInput === 'oxigenacao' && (
-              <NumericStepperControl
-                min={VITALS_CONFIG.oxigenacao.min}
-                max={VITALS_CONFIG.oxigenacao.max}
-                value={oxigenacao}
-                defaultStart={98}
-                onChange={(val) => handleInputChange(val, 'oxigenacao')}
-              />
-            )}
-          </View>
-
-          {/* Temperatura Corporal (RF22) */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelContainer}>
-              <View style={[styles.iconContainer, { backgroundColor: '#FEF3C7' }]}>
-                <Text>🌡️</Text>
-              </View>
-              <Text style={styles.label}>
-                Temperatura Corporal {hasValidTempPreview ? `(${tempParsed.toFixed(1)} °C)` : ''}
-              </Text>
-            </View>
-            <TextInput
-              placeholderTextColor="#A0A0AB"
-              style={[styles.input, focusedInput === 'temperatura' && styles.inputFocused]}
-              placeholder="Ex: 36.5"
-              keyboardType="decimal-pad"
-              value={temperatura}
-              onChangeText={handleTempChange}
-              onFocus={() => setFocusedInput('temperatura')}
-              onBlur={() => setFocusedInput(null)}
-              maxLength={4}
-            />
-            {isFebre && (
-              <View style={[styles.tempAlertBox, styles.tempAlertFever]}>
-                <Text style={styles.tempAlertTextFever}>
-                  ⚠️ Alerta de Febre ({tempParsed.toFixed(1)} °C &gt; 37.8 °C). Hidrate-se e procure orientação de saúde se persistir.
-                </Text>
-              </View>
-            )}
-            {isHipotermia && (
-              <View style={[styles.tempAlertBox, styles.tempAlertHypo]}>
-                <Text style={styles.tempAlertTextHypo}>
-                  ❄️ Alerta de Hipotermia ({tempParsed.toFixed(1)} °C &lt; 35.0 °C). Mantenha-se aquecido(a) e procure avaliação clínica.
-                </Text>
-              </View>
-            )}
-            {hasValidTempPreview && !isFebre && !isHipotermia && (
-              <View style={[styles.tempAlertBox, styles.tempAlertNormal]}>
-                <Text style={styles.tempAlertTextNormal}>
-                  ✅ Temperatura dentro da faixa esperada (35.0 – 37.8 °C).
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Mood */}
-          <Text style={styles.sectionTitle}>Como você se sente hoje?</Text>
-          <View style={styles.chipContainer}>
-            {BASIC_MOODS.map((m) => (
-              <TouchableOpacity 
-                key={m} 
-                style={[styles.chip, humor === m && styles.chipSelected]}
-                onPress={() => setHumor(m)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.chipText, humor === m && styles.chipTextSelected]}>
-                  {m}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Exercise */}
-          <Text style={styles.sectionTitle}>Fez exercício hoje?</Text>
-          <View style={styles.exerciseContainer}>
-            <TouchableOpacity 
-              style={[styles.exerciseBtn, exercicio === true && styles.exerciseBtnSelectedYes]}
-              onPress={() => setExercicio(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.exerciseBtnText, exercicio === true && styles.exerciseBtnTextSelectedYes]}>
-                Sim, treinei
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.exerciseBtn, exercicio === false && styles.exerciseBtnSelectedNo]}
-              onPress={() => setExercicio(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.exerciseBtnText, exercicio === false && styles.exerciseBtnTextSelectedNo]}>
-                Ainda não
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.saveButton, editingId !== null && { backgroundColor: '#D97706' }]}
-          onPress={handleSave}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.saveButtonText}>
-            {editingId ? 'Salvar Alterações' : 'Registrar Sinais Vitais'}
+          <Text style={styles.sectionSub}>
+            Acompanhamento de rotina de higiene, prevenção de lesões e segurança no domicílio.
           </Text>
-        </TouchableOpacity>
-
-        {/* Checklist Diário de Cuidados Básicos e Higiene (RF27) */}
-        <View style={styles.checklistCard}>
-          <View style={styles.checklistHeader}>
-            <Text style={styles.checklistTitle}>🧴 Checklist Diário de Cuidados (RF27)</Text>
+          <View style={styles.progressTrack}>
             <View
               style={[
-                styles.checklistBadge,
-                itensChecklistHoje.length === CHECKLIST_CUIDADOS_ITENS.length && styles.checklistBadgeDone,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.checklistBadgeText,
-                  itensChecklistHoje.length === CHECKLIST_CUIDADOS_ITENS.length && styles.checklistBadgeTextDone,
-                ]}
-              >
-                {itensChecklistHoje.length}/{CHECKLIST_CUIDADOS_ITENS.length} hoje
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.checklistSubtitle}>
-            Acompanhe os cuidados básicos de enfermagem, higiene, hidratação e prevenção de lesões no dia de hoje.
-          </Text>
-
-          <View style={styles.checklistProgressTrack}>
-            <View
-              style={[
-                styles.checklistProgressFill,
-                { width: `${(itensChecklistHoje.length / CHECKLIST_CUIDADOS_ITENS.length) * 100}%` },
+                styles.progressFill,
+                {
+                  width: `${
+                    (itensChecklistHoje.length / CHECKLIST_CUIDADOS_ITENS.length) * 100
+                  }%`,
+                },
               ]}
             />
           </View>
-
-          <TouchableOpacity
-            style={styles.checklistOpenBtn}
+          <AppButton
+            title="Abrir Checklist de Cuidados"
+            icon="checkbox-outline"
+            variant="secondary"
             onPress={() => setChecklistModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.checklistOpenBtnText}>Abrir Checklist de Cuidados</Text>
-          </TouchableOpacity>
-        </View>
+          />
+        </AppCard>
 
-        {/* Gráfico de Evolução de Sinais Vitais */}
         <BarChartCard
-          title="📊 Evolução dos Sinais Vitais"
+          title="Evolução dos Sinais Vitais"
           subtitle={chartConfig.current.subtitle}
           unit={chartConfig.current.unit}
           maxScale={chartConfig.current.maxScale}
           data={chartConfig.data}
-          emptyMessage={`Sem medições suficientes de ${chartConfig.current.label.replace(/^[^\s]+\s/, '')} para gerar o gráfico.`}
+          emptyMessage={`Sem medições suficientes de ${chartConfig.current.label} para gerar o gráfico.`}
           legend={[
-            { label: 'Dentro da faixa', color: '#10B981' },
-            { label: 'Requer atenção', color: '#EF4444' },
+            { label: 'Dentro da faixa', color: colors.semantic.success },
+            { label: 'Requer atenção', color: colors.semantic.danger },
           ]}
         >
-          <View style={styles.chartTabsRow}>
+          <View style={styles.metricTabsRow}>
             {chartConfig.metrics.map((metric) => {
               const active = chartMetric === metric.id;
               return (
                 <TouchableOpacity
                   key={metric.id}
-                  style={[styles.chartTab, active && styles.chartTabActive]}
+                  style={[styles.metricTab, active && styles.metricTabActive]}
                   onPress={() => setChartMetric(metric.id)}
-                  activeOpacity={0.75}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.chartTabText, active && styles.chartTabTextActive]}>
+                  <Text style={[styles.metricTabText, active && styles.metricTabTextActive]}>
                     {metric.label}
                   </Text>
                 </TouchableOpacity>
@@ -1020,158 +927,164 @@ export default function TelaSinaisVitais({ navigation }: Props) {
           </View>
         </BarChartCard>
 
-        {/* History */}
-        <View style={styles.historyContainer}>
-          <Text style={styles.historyTitle}>Últimos Registros</Text>
-
+        <AppCard variant="default">
+          <Text style={[styles.sectionTitle, { marginBottom: spacing.md }]}>Últimos Registros</Text>
           {historico.length === 0 ? (
-            <Text style={styles.emptyHistory}>Você ainda não tem registros.</Text>
+            <EmptyState
+              icon="pulse-outline"
+              title="Nenhuma medição registrada"
+              description="Preencha os indicadores acima para iniciar o acompanhamento dos seus sinais vitais."
+            />
           ) : (
-            historico.slice().reverse().slice(0, 10).map((h) => {
-              const dateObj = new Date(h.data);
-              const isBeingEdited = editingId === h.id;
-              return (
-                <View
-                  key={h.id}
-                  style={[
-                    styles.historyCard,
-                    isBeingEdited && { borderWidth: 1.5, borderColor: '#F59E0B', backgroundColor: '#FFFBEB' },
-                  ]}
-                >
-                  <View style={styles.historyDateContainer}>
-                    <Text style={styles.historyTime}>
-                      {dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                    <Text style={styles.historyDate}>
-                      {dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                    </Text>
-                  </View>
-
-                  <View style={styles.historyContent}>
-                    {h.bpm ? (
-                      <View style={styles.historyRow}>
-                        <Text>❤️</Text>
-                        <Text style={styles.historyValue}>{h.bpm} bpm</Text>
-                      </View>
-                    ) : null}
-                    {h.glicose ? (
-                      <View style={styles.historyRow}>
-                        <Text>🩸</Text>
-                        <Text style={styles.historyValue}>
-                          {h.glicose} mg/dL {h.glicoseTipo ? `(${h.glicoseTipo})` : ''}
+            <View style={styles.historyList}>
+              {historico
+                .slice()
+                .reverse()
+                .slice(0, 10)
+                .map((h) => {
+                  const dateObj = new Date(h.data);
+                  const isBeingEdited = editingId === h.id;
+                  return (
+                    <View
+                      key={h.id}
+                      style={[styles.historyCard, isBeingEdited && styles.historyCardEditing]}
+                    >
+                      <View style={styles.historyDateBox}>
+                        <Text style={styles.historyTime}>
+                          {dateObj.toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                        <Text style={styles.historyDate}>
+                          {dateObj.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })}
                         </Text>
                       </View>
-                    ) : null}
-                    {h.pressao ? (
-                      <View style={styles.historyRow}>
-                        <Text>🩺</Text>
-                        <Text style={styles.historyValue}>{h.pressao} mmHg</Text>
-                      </View>
-                    ) : null}
-                    {h.oxigenacao ? (
-                      <View style={styles.historyRow}>
-                        <Text>🫁</Text>
-                        <Text style={styles.historyValue}>{h.oxigenacao}% SpO2</Text>
-                      </View>
-                    ) : null}
-                    {h.temperatura ? (
-                      <View style={styles.historyRow}>
-                        <Text>🌡️</Text>
-                        <Text style={styles.historyValue}>{h.temperatura} °C</Text>
-                      </View>
-                    ) : null}
-                    {(h.humor || h.exercicio !== undefined) && (
-                      <View style={[styles.historyRow, { marginTop: 4, flexWrap: 'wrap' }]}>
-                        {h.humor && <Text style={{ fontSize: 15, color: '#374151', marginRight: 8 }}>Humor: {h.humor}</Text>}
-                        {h.exercicio !== undefined && <Text style={{ fontSize: 15, color: '#374151' }}>Exercício: {h.exercicio ? 'Sim' : 'Não'}</Text>}
-                      </View>
-                    )}
 
-                    <View style={styles.historyActionsRow}>
-                      <TouchableOpacity
-                        style={styles.historyEditBtn}
-                        onPress={() => handleStartEdit(h)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.historyEditBtnText}>✏️ Editar</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.historyDeleteBtn}
-                        onPress={() => handleDeleteRecord(h.id)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.historyDeleteBtnText}>🗑️ Excluir</Text>
-                      </TouchableOpacity>
+                      <View style={styles.historyValuesWrap}>
+                        {h.pressao ? (
+                          <View style={styles.valueLine}>
+                            <Ionicons name="fitness-outline" size={16} color={areaAccent.color} />
+                            <Text style={styles.valueText}>PA {h.pressao} mmHg</Text>
+                          </View>
+                        ) : null}
+                        {h.bpm ? (
+                          <View style={styles.valueLine}>
+                            <Ionicons name="heart-outline" size={16} color={areaAccent.color} />
+                            <Text style={styles.valueText}>{h.bpm} bpm</Text>
+                          </View>
+                        ) : null}
+                        {h.glicose ? (
+                          <View style={styles.valueLine}>
+                            <Ionicons name="water-outline" size={16} color={colors.brand.primary} />
+                            <Text style={styles.valueText}>
+                              {h.glicose} mg/dL {h.glicoseTipo ? `(${h.glicoseTipo})` : ''}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {h.oxigenacao ? (
+                          <View style={styles.valueLine}>
+                            <Ionicons name="pulse-outline" size={16} color={colors.brand.teal} />
+                            <Text style={styles.valueText}>{h.oxigenacao}% SpO₂</Text>
+                          </View>
+                        ) : null}
+                        {h.temperatura ? (
+                          <View style={styles.valueLine}>
+                            <Ionicons
+                              name="thermometer-outline"
+                              size={16}
+                              color={colors.semantic.warning}
+                            />
+                            <Text style={styles.valueText}>{h.temperatura} °C</Text>
+                          </View>
+                        ) : null}
+                        {(h.humor || h.exercicio !== undefined) && (
+                          <Text style={{ fontSize: 13, color: colors.text.secondary, marginTop: 2 }}>
+                            {[
+                              h.humor ? `Estado: ${h.humor}` : '',
+                              h.exercicio !== undefined
+                                ? `Exercício: ${h.exercicio ? 'Sim' : 'Não'}`
+                                : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.historyActionsCol}>
+                        <TouchableOpacity
+                          style={styles.iconActionBtn}
+                          onPress={() => handleStartEdit(h)}
+                          accessibilityLabel="Editar medição"
+                        >
+                          <Ionicons name="create-outline" size={18} color={colors.brand.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconActionBtn}
+                          onPress={() => handleDeleteRecord(h.id)}
+                          accessibilityLabel="Excluir medição"
+                        >
+                          <Ionicons name="trash-outline" size={18} color={colors.semantic.danger} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
+                  );
+                })}
+            </View>
+          )}
+        </AppCard>
+      </View>
+
+      <AppModal
+        visible={checklistModalVisible}
+        title="Checklist Diário de Cuidados"
+        subtitle={`Concluídos hoje: ${itensChecklistHoje.length} de ${CHECKLIST_CUIDADOS_ITENS.length}`}
+        onClose={() => setChecklistModalVisible(false)}
+        footer={
+          <AppButton
+            title="Concluir"
+            variant="primary"
+            onPress={() => setChecklistModalVisible(false)}
+          />
+        }
+      >
+        <View>
+          {CHECKLIST_CUIDADOS_ITENS.map((item) => {
+            const checked = itensChecklistHoje.includes(item.id);
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.checklistItemRow, checked && styles.checklistItemChecked]}
+                onPress={() => toggleChecklistItem(item.id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={checked ? 'checkbox' : 'square-outline'}
+                  size={24}
+                  color={checked ? colors.semantic.success : colors.text.secondary}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.checklistTitle, checked && styles.checklistTitleChecked]}>
+                    {item.titulo}
+                  </Text>
+                  <Text style={styles.checklistDesc}>{item.desc}</Text>
                 </View>
-              );
-            })
+              </TouchableOpacity>
+            );
+          })}
+          {itensChecklistHoje.length === CHECKLIST_CUIDADOS_ITENS.length && (
+            <AppCard variant="alert" tone="success" style={{ marginTop: spacing.xs }}>
+              <Text style={[styles.checklistTitle, { color: colors.semantic.success }]}>
+                Todos os cuidados diários básicos foram concluídos hoje!
+              </Text>
+            </AppCard>
           )}
         </View>
-
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Voltar ao Início</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Modal Checklist Diário de Cuidados (RF27) */}
-      <Modal
-        visible={checklistModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setChecklistModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Checklist de Cuidados ({itensChecklistHoje.length}/{CHECKLIST_CUIDADOS_ITENS.length})</Text>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => setChecklistModalVisible(false)}
-              >
-                <Text style={styles.modalCloseText}>Fechar</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubtitle}>
-              Marque os itens concluídos hoje ({new Date().toLocaleDateString('pt-BR')}). O progresso fica salvo para o turno atual.
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {CHECKLIST_CUIDADOS_ITENS.map((item) => {
-                const checked = itensChecklistHoje.includes(item.id);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[styles.checklistItem, checked && styles.checklistItemChecked]}
-                    onPress={() => toggleChecklistItem(item.id)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                      {checked && <Text style={styles.checkboxTick}>✓</Text>}
-                    </View>
-                    <View style={styles.checklistItemTextWrap}>
-                      <Text style={[styles.checklistItemTitle, checked && styles.checklistItemTitleChecked]}>
-                        {item.titulo}
-                      </Text>
-                      <Text style={styles.checklistItemDesc}>{item.desc}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {itensChecklistHoje.length === CHECKLIST_CUIDADOS_ITENS.length && (
-                <View style={styles.checklistDoneBanner}>
-                  <Text style={styles.checklistDoneBannerText}>
-                    ✅ Todos os cuidados diários de enfermagem foram concluídos hoje!
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+      </AppModal>
+    </ScreenShell>
   );
 }
