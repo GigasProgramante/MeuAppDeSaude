@@ -5,7 +5,6 @@ import {
   SinalVital,
   HumorRegistro,
   Medicamento,
-  SinalVitalEnfermagem,
   Treino,
   RegistroDor,
   PerfilUsuario
@@ -208,20 +207,6 @@ export const escutarSinaisVitais = (userId: string, callback: (sinais: SinalVita
   return () => {
     supabase.removeChannel(channel);
   };
-};
-
-// ==========================================
-// SINAIS VITAIS ENFERMAGEM (tabela: sinais_enfermagem)
-// ==========================================
-export const adicionarSinalEnfermagem = async (userId: string, sinal: Omit<SinalVitalEnfermagem, 'id'>) => {
-  const { data, error } = await supabase
-    .from('sinais_enfermagem')
-    .insert({ user_id: userId, ...sinal })
-    .select('id')
-    .single();
-
-  if (error) handleError(error, 'adicionarSinalEnfermagem');
-  return data?.id as string | undefined;
 };
 
 // ==========================================

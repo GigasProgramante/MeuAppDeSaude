@@ -77,14 +77,6 @@ export interface Medicamento {
   dataTermino?: string;
 }
 
-export interface SinalVitalEnfermagem {
-  id: string;
-  temperatura: string;
-  pressao: string;
-  spo2: string;
-  data: string;
-}
-
 export interface Treino {
   id: string;
   descricao: string;

@@ -68,17 +68,7 @@ create table if not exists public.sinais_vitais (
   data timestamptz default now()
 );
 
--- 5. Tabela de Sinais Vitais de Enfermagem
-create table if not exists public.sinais_enfermagem (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  temperatura text,
-  pressao text,
-  spo2 text,
-  data timestamptz default now()
-);
-
--- 6. Tabela de Histórico de Humor (Psicologia)
+-- 5. Tabela de Histórico de Humor (Psicologia)
 create table if not exists public.humor_historico (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -150,7 +140,6 @@ alter table public.perfis enable row level security;
 alter table public.lembretes enable row level security;
 alter table public.medicamentos enable row level security;
 alter table public.sinais_vitais enable row level security;
-alter table public.sinais_enfermagem enable row level security;
 alter table public.humor_historico enable row level security;
 alter table public.avaliacoes_psicologia enable row level security;
 alter table public.treinos enable row level security;
@@ -171,10 +160,6 @@ create policy "Paciente gerencia proprios medicamentos" on public.medicamentos
 
 drop policy if exists "Paciente gerencia proprios sinais vitais" on public.sinais_vitais;
 create policy "Paciente gerencia proprios sinais vitais" on public.sinais_vitais
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "Paciente gerencia proprios sinais enfermagem" on public.sinais_enfermagem;
-create policy "Paciente gerencia proprios sinais enfermagem" on public.sinais_enfermagem
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "Paciente gerencia proprio humor" on public.humor_historico;

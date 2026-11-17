@@ -2,14 +2,17 @@
   "expo": {
     "name": "MeuAppDeSaude",
     "slug": "MeuAppDeSaude",
+    "scheme": "meuappdesaude",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "br.edu.unc.meuappdesaude"
     },
     "android": {
+      "package": "br.edu.unc.meuappdesaude",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -24,6 +27,19 @@
     "plugins": [
       "expo-web-browser",
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#0F3A60",
+          "defaultChannel": "lembretes"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir que o MeuAppDeSaude acesse sua galeria para atualizar sua foto de perfil."
+        }
+      ],
       [
         "expo-location",
         {

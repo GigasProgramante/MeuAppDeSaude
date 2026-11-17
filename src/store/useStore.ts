@@ -10,7 +10,6 @@ import {
   HumorRegistro,
   AvaliacaoPsicologica,
   Medicamento,
-  SinalVitalEnfermagem,
   Treino,
   RegistroDor,
   PesoImcRegistro,
@@ -41,9 +40,6 @@ interface EstadoGlobal {
   updateMedicamento: (id: string, dados: Partial<Omit<Medicamento, 'id'>>) => void;
   removeMedicamento: (id: string) => void;
   setMedicamentos: (medicamentos: Medicamento[]) => void;
-
-  sinaisEnfermagem: SinalVitalEnfermagem[];
-  addSinalEnfermagem: (sinal: Omit<SinalVitalEnfermagem, 'id' | 'data'>) => void;
 
   checklistCuidados: ChecklistCuidadoDiario | null;
   setChecklistCuidados: (checklist: ChecklistCuidadoDiario) => void;
@@ -80,7 +76,6 @@ export const useStore = create<EstadoGlobal>()(
         humorHistorico: [],
         avaliacoesPsicologia: [],
         medicamentos: [],
-        sinaisEnfermagem: [],
         checklistCuidados: null,
         treinos: [],
         historicoDor: [],
@@ -139,11 +134,6 @@ export const useStore = create<EstadoGlobal>()(
         medicamentos: (state.medicamentos || []).filter((item) => item.id !== id)
       })),
       setMedicamentos: (medicamentos) => set({ medicamentos }),
-
-      sinaisEnfermagem: [],
-      addSinalEnfermagem: (sinal) => set((state) => ({
-        sinaisEnfermagem: [...(state.sinaisEnfermagem || []), { ...sinal, id: gerarIdLocal(), data: new Date().toISOString() }]
-      })),
 
       checklistCuidados: null,
       setChecklistCuidados: (checklist) => set({ checklistCuidados: checklist }),
