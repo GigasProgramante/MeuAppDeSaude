@@ -1,20 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  AppButton,
+  AppCard,
+  AppInput,
+  AppModal,
+  ScreenShell,
+  StatusBadge,
+  useFeedback,
+} from '../../components/ui';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { supabase, isSupabaseConfigured } from '../../services/supabase';
@@ -26,15 +23,20 @@ import {
 } from '../../services/authRecovery';
 import { cancelAllNotifications } from '../../services/notifications';
 import { GUEST_CONTEXT_KEY } from '../../services/sync';
+import { colors, spacing } from '../../theme/tokens';
 import { styles } from './styles';
 
-type ConfiguracoesScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Configuracoes'>;
+type ConfiguracoesScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Configuracoes'
+>;
 
 interface Props {
   navigation: ConfiguracoesScreenNavigationProp;
 }
 
 export default function TelaConfiguracoes({ navigation }: Props) {
+  const { showAlert, showToast } = useFeedback();
   const { perfil, updatePerfil, logout, wipeContext } = useStore();
 
   const [nome, setNome] = useState(perfil?.nome || '');
@@ -45,14 +47,11 @@ export default function TelaConfiguracoes({ navigation }: Props) {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoverModalVisible, setRecoverModalVisible] = useState(false);
 
-  // Troca de senha autenticado
   const [changePassModalVisible, setChangePassModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [showNewPass, setShowNewPass] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
-  // Exclusão definitiva LGPD com dupla confirmação
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -73,21 +72,11 @@ export default function TelaConfiguracoes({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
-  const mostrarAlerta = (titulo: string, mensagem: string, onOk?: () => void) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-      if (onOk) onOk();
-      return;
-    }
-
-    Alert.alert(titulo, mensagem, [{ text: 'OK', onPress: onOk }]);
-  };
-
   const handlePickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (permissionResult.granted === false) {
-      mostrarAlerta('Permissão Negada', 'Precisamos de permissão para acessar sua galeria.');
+      showAlert('Permissão Negada', 'Precisamos de permissão para acessar sua galeria.');
       return;
     }
 
@@ -129,7 +118,8 @@ export default function TelaConfiguracoes({ navigation }: Props) {
       }
 
       updatePerfil({ nome, telefone, fotoUri: finalFotoUri });
-      mostrarAlerta('Sucesso', 'Configurações salvas com sucesso!', () => navigation.goBack());
+      showToast('Configurações salvas com sucesso!', 'success');
+      navigation.goBack();
     } finally {
       setSaving(false);
     }
@@ -145,13 +135,13 @@ export default function TelaConfiguracoes({ navigation }: Props) {
   const handleSendPasswordReset = async () => {
     const emailLimpo = recoveryEmail.trim();
     if (!emailLimpo || !emailLimpo.includes('@')) {
-      mostrarAlerta('Atenção', 'Informe um endereço de e-mail válido para enviar o link.');
+      showAlert('Atenção', 'Informe um endereço de e-mail válido para enviar o link.');
       return;
     }
 
     if (!isSupabaseConfigured) {
       setRecoverModalVisible(false);
-      mostrarAlerta(
+      showAlert(
         'Modo Demonstração Local',
         `Para disparar o e-mail real de redefinição para ${emailLimpo}, configure as credenciais do Supabase no arquivo .env.`
       );
@@ -164,12 +154,12 @@ export default function TelaConfiguracoes({ navigation }: Props) {
         redirectTo: getPasswordResetRedirectUrl(),
       });
       if (error) {
-        mostrarAlerta('Erro ao Enviar', error.message);
+        showAlert('Erro ao Enviar', error.message);
         return;
       }
 
       setRecoverModalVisible(false);
-      mostrarAlerta(
+      showAlert(
         'E-mail Enviado',
         `As instruções para redefinição de senha foram enviadas para ${emailLimpo}.`
       );
@@ -180,16 +170,16 @@ export default function TelaConfiguracoes({ navigation }: Props) {
 
   const handleUpdatePassword = async () => {
     if (newPassword.length < 6) {
-      mostrarAlerta('Atenção', 'A nova senha deve possuir no mínimo 6 caracteres.');
+      showAlert('Atenção', 'A nova senha deve possuir no mínimo 6 caracteres.');
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      mostrarAlerta('Atenção', 'As senhas digitadas não coincidem.');
+      showAlert('Atenção', 'As senhas digitadas não coincidem.');
       return;
     }
     if (!isSupabaseConfigured) {
       setChangePassModalVisible(false);
-      mostrarAlerta(
+      showAlert(
         'Modo Local',
         'A troca de senha na nuvem requer configuração do Supabase no arquivo .env.'
       );
@@ -200,13 +190,13 @@ export default function TelaConfiguracoes({ navigation }: Props) {
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
-        mostrarAlerta('Erro ao Alterar Senha', error.message);
+        showAlert('Erro ao Alterar Senha', error.message);
         return;
       }
       setChangePassModalVisible(false);
       setNewPassword('');
       setConfirmNewPassword('');
-      mostrarAlerta('Senha Atualizada', 'Sua senha foi alterada com sucesso.');
+      showToast('Sua senha foi alterada com sucesso.', 'success');
     } finally {
       setUpdatingPassword(false);
     }
@@ -220,7 +210,7 @@ export default function TelaConfiguracoes({ navigation }: Props) {
 
   const handleConfirmarExclusaoDefinitiva = async () => {
     if (deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR') {
-      mostrarAlerta('Confirmação necessária', 'Digite a palavra EXCLUIR para confirmar.');
+      showAlert('Confirmação necessária', 'Digite a palavra EXCLUIR para confirmar.');
       return;
     }
 
@@ -233,7 +223,7 @@ export default function TelaConfiguracoes({ navigation }: Props) {
         if (sessionData?.session?.user) {
           const { error: fnError } = await supabase.functions.invoke('delete-account');
           if (fnError) {
-            mostrarAlerta(
+            showAlert(
               'Falha na Exclusão na Nuvem',
               `Não foi possível concluir a exclusão no servidor (${fnError.message}). Verifique se a Edge Function delete-account está implantada.`
             );
@@ -261,7 +251,7 @@ export default function TelaConfiguracoes({ navigation }: Props) {
       }
 
       setDeleteModalVisible(false);
-      mostrarAlerta(
+      showAlert(
         'Conta e Dados Excluídos',
         'Todos os seus registros foram removidos definitivamente conforme a LGPD.',
         () => {
@@ -292,290 +282,287 @@ export default function TelaConfiguracoes({ navigation }: Props) {
   const passStrength = newPassword ? avaliarForcaSenha(newPassword) : null;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Configurações</Text>
-        {authEmail ? (
-          <Text style={styles.accountSubtitle}>Conta conectada: {authEmail}</Text>
-        ) : (
-          <Text style={styles.accountSubtitle}>Modo local no aparelho (sem conta conectada)</Text>
-        )}
-
-        <TouchableOpacity style={styles.photoContainer} onPress={handlePickImage} activeOpacity={0.8}>
-          {fotoUri ? (
-            <Image source={{ uri: fotoUri }} style={styles.photo} />
-          ) : (
-            <View style={styles.photoPlaceholder}>
-              <Ionicons name="camera" size={40} color="#4B5563" />
+    <ScreenShell
+      title="Configurações"
+      subtitle={authEmail ? `Conta conectada: ${authEmail}` : 'Modo local no aparelho (Acesso Rápido)'}
+      maxWidth="form"
+      onBack={() => navigation.goBack()}
+    >
+      <View style={styles.sectionsStack}>
+        <AppCard variant="elevated">
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="person-circle-outline" size={22} color={colors.brand.primary} />
+              <Text style={styles.sectionTitle}>Meus Dados</Text>
             </View>
-          )}
-          <Text style={styles.changePhotoText}>Alterar Foto</Text>
-        </TouchableOpacity>
+            <StatusBadge
+              label={authEmail ? 'Conta Nuvem' : 'Local'}
+              tone={authEmail ? 'info' : 'neutral'}
+            />
+          </View>
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Nome</Text>
-          <TextInput
-            placeholderTextColor="#6B7280"
-            style={styles.input}
+          <TouchableOpacity style={styles.avatarArea} onPress={handlePickImage} activeOpacity={0.8}>
+            <View style={styles.avatarFrame}>
+              {fotoUri ? (
+                <Image source={{ uri: fotoUri }} style={styles.photo} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Ionicons name="camera-outline" size={34} color={colors.text.secondary} />
+                </View>
+              )}
+              <View style={styles.editBadge}>
+                <Ionicons name="pencil" size={14} color={colors.text.inverse} />
+              </View>
+            </View>
+            <Text style={styles.changePhotoText}>Alterar foto de perfil</Text>
+          </TouchableOpacity>
+
+          <AppInput
+            label="Nome"
             placeholder="Seu nome completo"
             value={nome}
             onChangeText={setNome}
           />
-        </View>
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Telefone</Text>
-          <TextInput
-            placeholderTextColor="#6B7280"
-            style={styles.input}
+          <AppInput
+            label="Telefone"
             placeholder="(47) 99999-9999"
             value={telefone}
             onChangeText={(txt) => setTelefone(aplicarMascaraTelefone(txt))}
             keyboardType="phone-pad"
             maxLength={15}
           />
-        </View>
 
-        <TouchableOpacity
-          style={[styles.saveButton, saving && { opacity: 0.7 }]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>Salvar Alterações</Text>
-          )}
-        </TouchableOpacity>
+          <AppButton
+            title="Salvar Alterações"
+            icon="save-outline"
+            variant="primary"
+            loading={saving}
+            onPress={handleSave}
+          />
+        </AppCard>
 
-        {authEmail ? (
-          <TouchableOpacity
-            style={styles.changePassButton}
-            onPress={() => setChangePassModalVisible(true)}
-          >
-            <Text style={styles.changePassButtonText}>Alterar Senha Atual</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <TouchableOpacity style={styles.recoverButton} onPress={handleOpenRecoverModal}>
-          <Text style={styles.recoverButtonText}>Recuperar Senha por E-mail</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.aboutUncButton} onPress={() => navigation.navigate('SobreUNC')}>
-          <Text style={styles.aboutUncButtonText}>Serviços da UNC à Comunidade</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Sair do Aplicativo</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.deleteAccountButton} onPress={abrirModalExclusao}>
-          <Text style={styles.deleteAccountButtonText}>Excluir Conta e Dados (LGPD)</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.disclaimerText}>
-          Este aplicativo é uma ferramenta de autocuidado e apoio educativo (UNC). Não substitui atendimento médico nem serviços de emergência.
-        </Text>
-      </ScrollView>
-
-      {/* Modal Alterar Senha Logado */}
-      <Modal
-        visible={changePassModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setChangePassModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Alterar Senha</Text>
-            <Text style={styles.modalSubtitle}>
-              Defina uma nova senha para sua conta ({authEmail}).
-            </Text>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Nova senha (mín. 6 caracteres)"
-                placeholderTextColor="#6B7280"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry={!showNewPass}
-              />
-              <TouchableOpacity
-                style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
-                onPress={() => setShowNewPass((v) => !v)}
-              >
-                <Ionicons name={showNewPass ? 'eye-off-outline' : 'eye-outline'} size={22} color="#374151" />
-              </TouchableOpacity>
-            </View>
-            {passStrength ? (
-              <Text style={{ fontSize: 13, fontWeight: '700', color: passStrength.cor, marginBottom: 10 }}>
-                {passStrength.label}
-              </Text>
-            ) : null}
-
-            <TextInput
-              style={styles.input}
-              placeholder="Confirme a nova senha"
-              placeholderTextColor="#6B7280"
-              value={confirmNewPassword}
-              onChangeText={setConfirmNewPassword}
-              secureTextEntry={!showNewPass}
-            />
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setChangePassModalVisible(false)}
-                disabled={updatingPassword}
-              >
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalConfirmBtn, updatingPassword && { opacity: 0.7 }]}
-                onPress={handleUpdatePassword}
-                disabled={updatingPassword}
-              >
-                {updatingPassword ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalConfirmText}>Salvar Senha</Text>
-                )}
-              </TouchableOpacity>
+        <AppCard variant="default">
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand.teal} />
+              <Text style={styles.sectionTitle}>Segurança e Privacidade</Text>
             </View>
           </View>
-        </View>
-      </Modal>
 
-      {/* Modal Recuperação de Senha (Supabase resetPasswordForEmail) */}
-      <Modal
+          <View style={styles.buttonStack}>
+            <AppButton
+              title="Alterar Senha da Conta"
+              icon="lock-closed-outline"
+              variant="outline"
+              onPress={() => setChangePassModalVisible(true)}
+            />
+            <AppButton
+              title="Enviar E-mail de Recuperação"
+              icon="mail-outline"
+              variant="outline"
+              onPress={handleOpenRecoverModal}
+            />
+            <AppButton
+              title="Excluir Minha Conta e Dados (LGPD)"
+              icon="trash-outline"
+              variant="danger"
+              onPress={abrirModalExclusao}
+            />
+          </View>
+        </AppCard>
+
+        <AppCard variant="default">
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="school-outline" size={22} color={colors.brand.primary} />
+              <Text style={styles.sectionTitle}>Institucional e Sessão</Text>
+            </View>
+          </View>
+
+          <View style={styles.buttonStack}>
+            <AppButton
+              title="Sobre a UNC e Clínicas-Escola"
+              icon="medkit-outline"
+              variant="secondary"
+              onPress={() => navigation.navigate('SobreUNC')}
+            />
+            <AppButton
+              title={authEmail ? 'Sair da Conta' : 'Sair do Acesso Rápido'}
+              icon="log-out-outline"
+              variant="outline"
+              onPress={handleLogout}
+            />
+          </View>
+
+          <Text style={styles.disclaimer}>
+            Aplicativo educacional de curricularização da extensão da Universidade do Contestado (UNC). O app apoia o acompanhamento pessoal e não substitui prontuário oficial ou avaliação profissional.
+          </Text>
+        </AppCard>
+      </View>
+
+      <AppModal
         visible={recoverModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRecoverModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Recuperar Senha</Text>
-            <Text style={styles.modalSubtitle}>
-              Informe o e-mail da sua conta para enviarmos o link de redefinição de senha.
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="seu@email.com"
-              placeholderTextColor="#6B7280"
-              value={recoveryEmail}
-              onChangeText={setRecoveryEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+        title="Recuperação de Senha"
+        subtitle="Informe seu e-mail cadastrado para receber o link de redefinição."
+        onClose={() => setRecoverModalVisible(false)}
+        footer={
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <AppButton
+              title="Cancelar"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => setRecoverModalVisible(false)}
             />
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setRecoverModalVisible(false)}
-                disabled={sendingReset}
-              >
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalConfirmBtn, sendingReset && { opacity: 0.7 }]}
-                onPress={handleSendPasswordReset}
-                disabled={sendingReset}
-              >
-                {sendingReset ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalConfirmText}>Enviar Link</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            <AppButton
+              title="Enviar link"
+              variant="primary"
+              loading={sendingReset}
+              style={{ flex: 1 }}
+              onPress={handleSendPasswordReset}
+            />
           </View>
-        </View>
-      </Modal>
-
-      {/* Modal Exclusão Definitiva de Conta e Dados (Dupla Confirmação LGPD) */}
-      <Modal
-        visible={deleteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => !deletingAccount && setDeleteModalVisible(false)}
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={[styles.modalTitle, { color: '#B91C1C' }]}>
-              Excluir Conta e Dados (LGPD)
-            </Text>
+        <AppInput
+          label="E-mail"
+          placeholder="seu@email.com"
+          value={recoveryEmail}
+          onChangeText={setRecoveryEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      </AppModal>
 
-            {deleteStep === 1 ? (
-              <>
-                <Text style={styles.modalSubtitle}>
-                  Esta ação é permanente e irreversível. Todos os seus dados pessoais, perfil, sinais vitais, lembretes, medicamentos, histórico emocional, dor e treinos serão apagados definitivamente.
-                </Text>
-                <View style={styles.modalActionsRow}>
-                  <TouchableOpacity
-                    style={styles.modalCancelBtn}
-                    onPress={() => setDeleteModalVisible(false)}
-                  >
-                    <Text style={styles.modalCancelText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.dangerConfirmBtn}
-                    onPress={() => setDeleteStep(2)}
-                  >
-                    <Text style={styles.modalConfirmText}>Continuar</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalSubtitle}>
-                  Segunda confirmação: digite a palavra EXCLUIR abaixo para apagar sua conta e todos os registros.
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Digite EXCLUIR"
-                  placeholderTextColor="#6B7280"
-                  value={deleteConfirmText}
-                  onChangeText={setDeleteConfirmText}
-                  autoCapitalize="characters"
-                />
-                <View style={styles.modalActionsRow}>
-                  <TouchableOpacity
-                    style={styles.modalCancelBtn}
-                    onPress={() => setDeleteModalVisible(false)}
-                    disabled={deletingAccount}
-                  >
-                    <Text style={styles.modalCancelText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.dangerConfirmBtn,
-                      (deletingAccount || deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR') && {
-                        opacity: 0.6,
-                      },
-                    ]}
-                    onPress={handleConfirmarExclusaoDefinitiva}
-                    disabled={deletingAccount}
-                  >
-                    {deletingAccount ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.modalConfirmText}>Excluir Tudo</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+      <AppModal
+        visible={changePassModalVisible}
+        title="Alterar Senha"
+        subtitle="Escolha uma senha com pelo menos 6 caracteres."
+        onClose={() => setChangePassModalVisible(false)}
+        footer={
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <AppButton
+              title="Cancelar"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => setChangePassModalVisible(false)}
+            />
+            <AppButton
+              title="Salvar Senha"
+              variant="primary"
+              loading={updatingPassword}
+              style={{ flex: 1 }}
+              onPress={handleUpdatePassword}
+            />
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        }
+      >
+        <AppInput
+          label="Nova senha *"
+          placeholder="Mínimo 6 caracteres"
+          value={newPassword}
+          onChangeText={setNewPassword}
+          isPassword
+        />
+
+        {passStrength && (
+          <View style={styles.strengthRow}>
+            <View style={styles.strengthBarTrack}>
+              <View
+                style={[
+                  styles.strengthBarFill,
+                  {
+                    width:
+                      passStrength.nivel === 'fraca'
+                        ? '33%'
+                        : passStrength.nivel === 'media'
+                          ? '66%'
+                          : '100%',
+                    backgroundColor: passStrength.cor,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.strengthLabel, { color: passStrength.cor }]}>
+              Força da senha: {passStrength.label}
+            </Text>
+          </View>
+        )}
+
+        <AppInput
+          label="Confirmar nova senha *"
+          placeholder="Repita a nova senha"
+          value={confirmNewPassword}
+          onChangeText={setConfirmNewPassword}
+          isPassword
+        />
+      </AppModal>
+
+      <AppModal
+        visible={deleteModalVisible}
+        title="Excluir Conta e Dados (LGPD)"
+        onClose={() => setDeleteModalVisible(false)}
+        footer={
+          deleteStep === 1 ? (
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <AppButton
+                title="Cancelar"
+                variant="outline"
+                style={{ flex: 1 }}
+                onPress={() => setDeleteModalVisible(false)}
+              />
+              <AppButton
+                title="Continuar"
+                variant="danger"
+                style={{ flex: 1 }}
+                onPress={() => setDeleteStep(2)}
+              />
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <AppButton
+                title="Voltar"
+                variant="outline"
+                style={{ flex: 1 }}
+                onPress={() => setDeleteStep(1)}
+              />
+              <AppButton
+                title="Excluir Definitivamente"
+                variant="danger"
+                loading={deletingAccount}
+                style={{ flex: 1 }}
+                onPress={handleConfirmarExclusaoDefinitiva}
+              />
+            </View>
+          )
+        }
+      >
+        {deleteStep === 1 ? (
+          <View>
+            <View style={styles.deleteWarningBox}>
+              <Text style={styles.deleteWarningText}>
+                Esta ação é irreversível e apaga todos os seus dados clínicos, lembretes, medicamentos, histórico de humor e conta vinculada.
+              </Text>
+            </View>
+            <Text style={styles.modalText}>
+              Deseja continuar para a confirmação final da exclusão definitiva?
+            </Text>
+          </View>
+        ) : (
+          <View>
+            <Text style={styles.modalText}>
+              Para confirmar a exclusão definitiva da conta e de todos os dados locais e em nuvem, digite EXCLUIR no campo abaixo:
+            </Text>
+            <AppInput
+              label="Confirmação"
+              placeholder="Digite EXCLUIR"
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              autoCapitalize="characters"
+            />
+          </View>
+        )}
+      </AppModal>
+    </ScreenShell>
   );
 }

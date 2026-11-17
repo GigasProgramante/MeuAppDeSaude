@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, layout, radii, spacing, typography } from '../../theme/tokens';
 
 interface ScreenShellProps {
-  title: string;
+  title?: string;
   subtitle?: string;
   areaBadge?: { label: string; color: string; bg: string };
   onBack?: () => void;
@@ -43,43 +43,49 @@ export function ScreenShell({
     <View style={[styles.innerWrap, { maxWidth: widthCap }, contentStyle]}>{children}</View>
   );
 
+  const hasHeader = Boolean(title || onBack || rightAction || areaBadge || subtitle);
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerWrapper}>
-        <View style={[styles.headerInner, { maxWidth: widthCap }]}>
-          <View style={styles.headerLeft}>
-            {onBack && (
-              <TouchableOpacity
-                style={styles.backBtn}
-                onPress={onBack}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel="Voltar"
-              >
-                <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-              </TouchableOpacity>
-            )}
-            <View style={styles.titleBlock}>
-              {areaBadge && (
-                <View style={[styles.areaPill, { backgroundColor: areaBadge.bg }]}>
-                  <Text style={[styles.areaPillText, { color: areaBadge.color }]}>
-                    {areaBadge.label}
-                  </Text>
-                </View>
+      {hasHeader && (
+        <View style={styles.headerWrapper}>
+          <View style={[styles.headerInner, { maxWidth: widthCap }]}>
+            <View style={styles.headerLeft}>
+              {onBack && (
+                <TouchableOpacity
+                  style={styles.backBtn}
+                  onPress={onBack}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel="Voltar"
+                >
+                  <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
+                </TouchableOpacity>
               )}
-              <Text style={styles.headerTitle} numberOfLines={2}>
-                {title}
-              </Text>
-              {subtitle ? (
-                <Text style={styles.headerSubtitle} numberOfLines={2}>
-                  {subtitle}
-                </Text>
-              ) : null}
+              <View style={styles.titleBlock}>
+                {areaBadge && (
+                  <View style={[styles.areaPill, { backgroundColor: areaBadge.bg }]}>
+                    <Text style={[styles.areaPillText, { color: areaBadge.color }]}>
+                      {areaBadge.label}
+                    </Text>
+                  </View>
+                )}
+                {title ? (
+                  <Text style={styles.headerTitle} numberOfLines={2}>
+                    {title}
+                  </Text>
+                ) : null}
+                {subtitle ? (
+                  <Text style={styles.headerSubtitle} numberOfLines={2}>
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
             </View>
+            {rightAction ? <View style={styles.headerRight}>{rightAction}</View> : null}
           </View>
-          {rightAction ? <View style={styles.headerRight}>{rightAction}</View> : null}
         </View>
-      </View>
+      )}
 
       {scrollable ? (
         <ScrollView

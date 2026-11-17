@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  AppButton,
+  AppCard,
+  AppInput,
+  ScreenShell,
+  useFeedback,
+} from '../../components/ui';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { isSupabaseConfigured, supabase } from '../../services/supabase';
 import { avaliarForcaSenha } from '../../services/authRecovery';
@@ -27,34 +23,24 @@ interface Props {
 }
 
 export default function RedefinirSenhaScreen({ navigation }: Props) {
+  const { showAlert } = useFeedback();
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [showPass, setShowPass] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const forca = novaSenha ? avaliarForcaSenha(novaSenha) : null;
 
-  const mostrarAlerta = (titulo: string, mensagem: string, onOk?: () => void) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-      if (onOk) onOk();
-      return;
-    }
-    Alert.alert(titulo, mensagem, [{ text: 'OK', onPress: onOk }]);
-  };
-
   const handleConfirmarNovaSenha = async () => {
     if (novaSenha.length < 6) {
-      mostrarAlerta('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
+      showAlert('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
       return;
     }
     if (novaSenha !== confirmarSenha) {
-      mostrarAlerta('Atenção', 'As senhas digitadas não coincidem.');
+      showAlert('Atenção', 'As senhas digitadas não coincidem.');
       return;
     }
     if (!isSupabaseConfigured) {
-      mostrarAlerta(
+      showAlert(
         'Ambiente Local',
         'Configure o Supabase no .env para concluir a redefinição de senha na nuvem.',
         () => navigation.replace('Login')
@@ -66,11 +52,11 @@ export default function RedefinirSenhaScreen({ navigation }: Props) {
     try {
       const { error } = await supabase.auth.updateUser({ password: novaSenha });
       if (error) {
-        mostrarAlerta('Erro ao Redefinir', error.message);
+        showAlert('Erro ao Redefinir', error.message);
         return;
       }
 
-      mostrarAlerta('Senha Atualizada', 'Sua nova senha foi salva com sucesso!', () => {
+      showAlert('Senha Atualizada', 'Sua nova senha foi salva com sucesso!', () => {
         navigation.reset({ index: 0, routes: [{ name: 'Inicial' }] });
       });
     } finally {
@@ -79,78 +65,64 @@ export default function RedefinirSenhaScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.title}>Definir Nova Senha</Text>
-          <Text style={styles.subtitle}>
-            Crie uma nova senha de acesso para continuar usando sua conta com segurança.
-          </Text>
+    <ScreenShell
+      title="Definir Nova Senha"
+      subtitle="Crie uma nova senha de acesso para proteger sua conta."
+      maxWidth="form"
+      onBack={() => navigation.replace('Login')}
+    >
+      <AppCard variant="elevated">
+        <AppInput
+          label="Nova Senha *"
+          placeholder="Mínimo 6 caracteres"
+          value={novaSenha}
+          onChangeText={setNovaSenha}
+          isPassword
+        />
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Nova Senha *</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.input}
-                placeholder="Mínimo 6 caracteres"
-                placeholderTextColor="#64748B"
-                value={novaSenha}
-                onChangeText={setNovaSenha}
-                secureTextEntry={!showPass}
+        {forca && (
+          <View style={styles.strengthRow}>
+            <View style={styles.strengthBarTrack}>
+              <View
+                style={[
+                  styles.strengthBarFill,
+                  {
+                    width:
+                      forca.nivel === 'fraca' ? '33%' : forca.nivel === 'media' ? '66%' : '100%',
+                    backgroundColor: forca.cor,
+                  },
+                ]}
               />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowPass((v) => !v)}
-                accessibilityLabel={showPass ? 'Ocultar senha' : 'Mostrar senha'}
-              >
-                <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={22} color="#334155" />
-              </TouchableOpacity>
             </View>
-            {forca && <Text style={[styles.strengthText, { color: forca.cor }]}>{forca.label}</Text>}
+            <Text style={[styles.strengthLabel, { color: forca.cor }]}>
+              Força da senha: {forca.label}
+            </Text>
           </View>
+        )}
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Confirmar Nova Senha *</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.input}
-                placeholder="Repita a nova senha"
-                placeholderTextColor="#64748B"
-                value={confirmarSenha}
-                onChangeText={setConfirmarSenha}
-                secureTextEntry={!showConfirm}
-              />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowConfirm((v) => !v)}
-                accessibilityLabel={showConfirm ? 'Ocultar senha' : 'Mostrar senha'}
-              >
-                <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={22} color="#334155" />
-              </TouchableOpacity>
-            </View>
-          </View>
+        <AppInput
+          label="Confirmar Nova Senha *"
+          placeholder="Repita a nova senha"
+          value={confirmarSenha}
+          onChangeText={setConfirmarSenha}
+          isPassword
+        />
 
-          <TouchableOpacity
-            style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+        <View style={styles.actions}>
+          <AppButton
+            title="Salvar Nova Senha"
+            icon="checkmark-circle-outline"
+            variant="primary"
+            loading={loading}
             onPress={handleConfirmarNovaSenha}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Salvar Nova Senha</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
+          />
+          <AppButton
+            title="Voltar ao Login"
+            variant="ghost"
             onPress={() => navigation.replace('Login')}
-            disabled={loading}
-          >
-            <Text style={styles.secondaryBtnText}>Voltar para o Login</Text>
-          </TouchableOpacity>
+          />
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </AppCard>
+    </ScreenShell>
   );
 }
