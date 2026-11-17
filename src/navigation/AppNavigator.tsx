@@ -9,7 +9,7 @@ import TelaHumor from '../screens/Humor';
 import TelaLembretes from '../screens/Lembretes';
 import TelaLogin from '../screens/Login';
 import TelaCadastro from '../screens/Cadastro';
-import TelaPerfil from '../screens/Perfil';
+import TelaPerfil, { CorpoMovimentoTab } from '../screens/Perfil';
 import TelaFisioterapia from '../screens/Fisioterapia';
 import TelaConfiguracoes from '../screens/Configuracoes';
 import TelaSobreUNC from '../screens/SobreUNC';
@@ -23,7 +23,7 @@ export type RootStackParamList = {
   Login: undefined;
   Cadastro: undefined;
   RedefinirSenha: undefined;
-  Perfil: undefined;
+  Perfil: { initialTab?: CorpoMovimentoTab } | undefined;
   Inicial: undefined;
   SinaisVitais: undefined;
   Humor: undefined;

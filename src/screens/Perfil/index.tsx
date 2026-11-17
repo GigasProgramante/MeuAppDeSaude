@@ -1,33 +1,95 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, Platform } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import {
+  AppButton,
+  AppCard,
+  AppInput,
+  AppModal,
+  ChipSelector,
+  EmptyState,
+  ScreenShell,
+  SegmentedTabs,
+  StatusBadge,
+  useFeedback,
+} from '../../components/ui';
 import {
   calcularEClassificarImc,
   contarTreinosSemanaCorrente,
   filtrarExerciciosPorComorbidades,
 } from '../../services/clinicaHelpers';
 import { formatNumeroParaUi } from '../../services/mappers';
+import { colors, spacing } from '../../theme/tokens';
+import { FisioterapiaPainSection } from '../Fisioterapia/FisioterapiaPainSection';
 import { styles } from './styles';
 
-type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Perfil'>;
+export type CorpoMovimentoTab = 'saude' | 'educacao' | 'fisioterapia';
+
+type ProfileScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Perfil' | 'Fisioterapia'
+>;
+type ProfileScreenRouteProp = RouteProp<RootStackParamList, 'Perfil'>;
 
 interface Props {
   navigation: ProfileScreenNavigationProp;
+  route?: ProfileScreenRouteProp;
+  initialTabOverride?: CorpoMovimentoTab;
 }
 
 type IntensidadeTreino = 'Leve' | 'Moderado' | 'Intenso';
 
 const COMORBIDADES_OPCOES = ['Diabetes', 'Hipertensão', 'Problema Cardíaco', 'Nenhuma'];
+const GENDERS = ['Masculino', 'Feminino', 'Outro'];
+const ACTIVITIES = ['Ativo (Pratico Exercícios)', 'De Vez em Quando', 'Não Pratico'];
+
 const INTENSIDADES: { tipo: IntensidadeTreino; label: string; met: number }[] = [
   { tipo: 'Leve', label: 'Leve', met: 3.5 },
   { tipo: 'Moderado', label: 'Moderado', met: 5.5 },
   { tipo: 'Intenso', label: 'Intenso', met: 8.0 },
 ];
 
-export default function ProfileScreen({ navigation }: Props) {
+const CORPO_TABS: {
+  key: CorpoMovimentoTab;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { key: 'saude', label: 'Perfil & Saúde', icon: 'body-outline' },
+  { key: 'educacao', label: 'Educação Física', icon: 'fitness-outline' },
+  { key: 'fisioterapia', label: 'Fisioterapia & Dor', icon: 'medkit-outline' },
+];
+
+const getImcBadgeTone = (valorImc: number): 'info' | 'success' | 'warning' | 'danger' => {
+  if (valorImc < 18.5) return 'info';
+  if (valorImc < 25) return 'success';
+  if (valorImc < 30) return 'warning';
+  return 'danger';
+};
+
+const getImcPointerPercent = (valorImc: number): number => {
+  // Mapeia IMC entre 14 e 40 na barra contínua de 0% a 100%
+  const pct = ((valorImc - 14) / (40 - 14)) * 100;
+  return Math.max(4, Math.min(96, pct));
+};
+
+export default function ProfileScreen({ navigation, route, initialTabOverride }: Props) {
+  const { showAlert, showToast } = useFeedback();
+  const resolvedInitialTab = initialTabOverride ?? route?.params?.initialTab ?? 'saude';
+  const [activeTab, setActiveTab] = useState<CorpoMovimentoTab>(resolvedInitialTab);
+
+  useEffect(() => {
+    if (initialTabOverride) {
+      setActiveTab(initialTabOverride);
+    } else if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [initialTabOverride, route?.params?.initialTab]);
+
   const { perfil, updatePerfil } = useStore();
   const frequenciaAtividade = perfil?.frequenciaAtividade || null;
   const treinos = useStore((state) => state.treinos || []);
@@ -36,26 +98,21 @@ export default function ProfileScreen({ navigation }: Props) {
   const addRegistroPesoImc = useStore((state) => state.addRegistroPesoImc);
 
   const [chartMode, setChartMode] = useState<'peso' | 'imc'>('peso');
-
   const [age, setAge] = useState(formatNumeroParaUi(perfil?.idade));
   const [weight, setWeight] = useState(formatNumeroParaUi(perfil?.peso));
   const [height, setHeight] = useState(formatNumeroParaUi(perfil?.altura));
   const [gender, setGender] = useState<string | null>(perfil?.sexo || null);
   const [comorbidades, setComorbidades] = useState<string[]>(perfil?.comorbidades || []);
   const [alergias, setAlergias] = useState(perfil?.alergias || '');
-
   const [imc, setImc] = useState<number | null>(null);
   const [imcClassification, setImcClassification] = useState('');
+  const hasEditedPerfil = useRef(false);
 
-  // EducacaoFisica states (RF29, RF31)
   const [desc, setDesc] = useState('');
   const [duracaoMin, setDuracaoMin] = useState('');
   const [intensidade, setIntensidade] = useState<IntensidadeTreino>('Moderado');
   const [modalVisible, setModalVisible] = useState(false);
 
-  const hasEditedPerfil = useRef(false);
-
-  // Sincroniza quando o perfil hidrata do armazenamento local
   useEffect(() => {
     if (perfil && !hasEditedPerfil.current) {
       const idadeStr = formatNumeroParaUi(perfil.idade);
@@ -70,27 +127,11 @@ export default function ProfileScreen({ navigation }: Props) {
     }
   }, [perfil]);
 
-  const mostrarAlerta = (titulo: string, mensagem: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${titulo}\n\n${mensagem}`);
-    } else {
-      Alert.alert(titulo, mensagem);
-    }
-  };
-
-  const genders = ['Masculino', 'Feminino', 'Outro'];
-  const activities = [
-    'Ativo (Pratico Exercícios)',
-    'De Vez em Quando',
-    'Não Pratico'
-  ];
-
   const resultadoBiblioteca = useMemo(
     () => filtrarExerciciosPorComorbidades(comorbidades),
     [comorbidades]
   );
 
-  // IMC Calculation logic (faixas contínuas OMS sem lacunas)
   useEffect(() => {
     const resultado = calcularEClassificarImc(weight, height);
     if (resultado) {
@@ -127,7 +168,7 @@ export default function ProfileScreen({ navigation }: Props) {
       Boolean(alergias.trim());
 
     if (!temAlgumDado) {
-      mostrarAlerta('Atenção', 'Preencha ao menos um dado corporal, comorbidade ou alergia para salvar.');
+      showAlert('Atenção', 'Preencha ao menos um dado corporal, comorbidade ou alergia para salvar.');
       return;
     }
 
@@ -151,22 +192,22 @@ export default function ProfileScreen({ navigation }: Props) {
     }
 
     const dadosCorporaisFaltantes = !age.trim() || !weight.trim() || !height.trim() || !gender;
-    mostrarAlerta(
-      'Sucesso',
-      dadosCorporaisFaltantes
-        ? 'Dados de saúde salvos! Preencha Idade, Peso, Altura e Sexo quando quiser calcular seu IMC completo.'
-        : 'Perfil corporal e dados de saúde salvos com sucesso!'
-    );
+    if (dadosCorporaisFaltantes) {
+      showAlert(
+        'Dados salvos',
+        'Dados de saúde salvos! Preencha Idade, Peso, Altura e Sexo quando quiser calcular seu IMC completo.'
+      );
+    } else {
+      showToast('Perfil corporal e dados de saúde salvos com sucesso!', 'success');
+    }
   };
 
-  // Cálculo automático da Meta Diária de Água: 35ml × peso corporal
   const pesoNumerico = parseFloat((weight || formatNumeroParaUi(perfil?.peso)).replace(',', '.'));
   const hasValidPeso = !isNaN(pesoNumerico) && pesoNumerico > 0;
   const metaAguaMl = hasValidPeso ? Math.round(pesoNumerico * 35) : null;
   const metaAguaLitros = metaAguaMl !== null ? (metaAguaMl / 1000).toFixed(2).replace('.', ',') : null;
   const copos250ml = metaAguaMl !== null ? Math.ceil(metaAguaMl / 250) : null;
 
-  // Cálculo de Gasto Calórico (RF29, RF31)
   const duracaoNum = parseInt(duracaoMin.replace(/[^\d]/g, ''), 10);
   const hasValidDuracao = !isNaN(duracaoNum) && duracaoNum > 0;
   const pesoParaTreino = hasValidPeso ? pesoNumerico : 70;
@@ -177,11 +218,11 @@ export default function ProfileScreen({ navigation }: Props) {
 
   const handleRegistrarTreino = () => {
     if (!desc.trim()) {
-      mostrarAlerta('Atenção', 'Por favor, descreva o treino que você realizou.');
+      showAlert('Atenção', 'Por favor, descreva o treino que você realizou.');
       return;
     }
     if (!hasValidDuracao) {
-      mostrarAlerta('Atenção', 'Informe a duração do treino em minutos (ex: 30) para calcular o gasto calórico.');
+      showAlert('Atenção', 'Informe a duração do treino em minutos (ex.: 30) para estimar calorias.');
       return;
     }
 
@@ -192,10 +233,7 @@ export default function ProfileScreen({ navigation }: Props) {
       intensidade,
       caloriasEstimadas: kcal,
     });
-    mostrarAlerta(
-      'Treino Registrado! 🔥',
-      `${desc.trim()} (${duracaoNum} min • ${intensidade})\nGasto estimado: ~${kcal} kcal.`
-    );
+    showToast(`Treino salvo: ${desc.trim()} (~${kcal} kcal).`, 'success');
     setDesc('');
     setDuracaoMin('');
   };
@@ -231,13 +269,13 @@ export default function ProfileScreen({ navigation }: Props) {
           label,
           value: rec.peso,
           displayValue: `${rec.peso.toFixed(1)}kg`,
-          color: '#0E7490',
+          color: colors.brand.teal,
         });
       } else if (chartMode === 'imc' && rec.imc !== undefined && rec.imc > 0) {
-        let color = '#10B981';
-        if (rec.imc < 18.5) color = '#3B82F6';
-        else if (rec.imc >= 25 && rec.imc < 30) color = '#F59E0B';
-        else if (rec.imc >= 30) color = '#EF4444';
+        let color: string = colors.semantic.success;
+        if (rec.imc < 18.5) color = colors.semantic.info;
+        else if (rec.imc >= 25 && rec.imc < 30) color = colors.semantic.warning;
+        else if (rec.imc >= 30) color = colors.semantic.danger;
 
         points.push({
           label,
@@ -251,27 +289,47 @@ export default function ProfileScreen({ navigation }: Props) {
     return points;
   }, [historicoImc, perfil?.peso, perfil?.imc, chartMode]);
 
+  const areaAccent = colors.areas.corpoMovimento;
+  const coposVisuaisCount = copos250ml ? Math.min(copos250ml, 10) : 0;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>IMC & Educação Física</Text>
-        <Text style={styles.subtitle}>Calcule seu IMC, informe dados clínicos e acompanhe seus treinos físicos.</Text>
-
-        {/* Destaque visual obrigatório para alergias registradas (RF28) */}
-        {alertaAlergiaTexto.length > 0 && (
-          <View style={styles.allergyBanner}>
-            <Text style={styles.allergyBannerTitle}>⚠️ ALERTA CLÍNICO — ALERGIAS REGISTRADAS</Text>
-            <Text style={styles.allergyBannerText}>{alertaAlergiaTexto}</Text>
+    <ScreenShell
+      title="Corpo & Movimento"
+      subtitle="Perfil corporal, hidratação, educação física e fisioterapia."
+      areaBadge={{
+        label: 'Corpo & Movimento',
+        color: areaAccent.color,
+        bg: areaAccent.bg,
+      }}
+      onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.replace('Inicial'))}
+    >
+      {alertaAlergiaTexto.length > 0 && (
+        <AppCard variant="alert" tone="danger">
+          <View style={styles.allergyRow}>
+            <Ionicons name="warning" size={22} color={colors.semantic.danger} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.allergyTitle}>Alerta Clínico — Alergias Registradas</Text>
+              <Text style={styles.allergyText}>{alertaAlergiaTexto}</Text>
+            </View>
           </View>
-        )}
+        </AppCard>
+      )}
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Perfil Corporal e Clínico</Text>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Idade</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.input}
-              placeholder="Sua idade"
+      <SegmentedTabs tabs={CORPO_TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {activeTab === 'saude' && (
+        <View style={styles.tabSection}>
+          <AppCard variant="elevated">
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="person-outline" size={20} color={areaAccent.color} />
+                <Text style={styles.sectionTitle}>Perfil Corporal e Clínico</Text>
+              </View>
+            </View>
+
+            <AppInput
+              label="Idade"
+              placeholder="Sua idade em anos"
               value={age}
               onChangeText={(text) => {
                 hasEditedPerfil.current = true;
@@ -279,95 +337,83 @@ export default function ProfileScreen({ navigation }: Props) {
               }}
               keyboardType="numeric"
             />
-          </View>
 
-          <View style={styles.row}>
-            <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-              <Text style={styles.label}>Peso (kg)</Text>
-              <TextInput placeholderTextColor="#999"
-                style={styles.input}
-                placeholder="Ex: 70.5"
-                value={weight}
-                onChangeText={(text) => {
-                  hasEditedPerfil.current = true;
-                  setWeight(text);
-                }}
-                keyboardType="decimal-pad"
-              />
+            <View style={styles.twoCols}>
+              <View style={styles.colItem}>
+                <AppInput
+                  label="Peso"
+                  unitSuffix="kg"
+                  placeholder="Ex: 70.5"
+                  value={weight}
+                  onChangeText={(text) => {
+                    hasEditedPerfil.current = true;
+                    setWeight(text);
+                  }}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={styles.colItem}>
+                <AppInput
+                  label="Altura"
+                  unitSuffix="cm"
+                  placeholder="Ex: 175"
+                  value={height}
+                  onChangeText={(text) => {
+                    hasEditedPerfil.current = true;
+                    setHeight(text);
+                  }}
+                  keyboardType="numeric"
+                />
+              </View>
             </View>
-            <View style={[styles.formGroup, { flex: 1, marginLeft: 10 }]}>
-              <Text style={styles.label}>Altura (cm)</Text>
-              <TextInput placeholderTextColor="#999"
-                style={styles.input}
-                placeholder="Ex: 175"
-                value={height}
-                onChangeText={(text) => {
-                  hasEditedPerfil.current = true;
-                  setHeight(text);
-                }}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
 
-          <Text style={styles.label}>Sexo</Text>
-          <View style={styles.genderContainer}>
-            {genders.map((g) => (
-              <TouchableOpacity
-                key={g}
-                style={[styles.genderButton, gender === g && styles.selectedGender]}
-                onPress={() => {
-                  hasEditedPerfil.current = true;
-                  setGender(g);
-                }}
-              >
-                <Text style={[styles.genderText, gender === g && styles.selectedGenderText]}>{g}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+            <ChipSelector
+              label="Sexo"
+              options={GENDERS}
+              selected={gender}
+              onSelect={(g) => {
+                hasEditedPerfil.current = true;
+                setGender(g);
+              }}
+            />
 
-          {imc !== null && (
-            <View style={styles.imcContainer}>
-              <Text style={styles.imcTitle}>Seu IMC: {imc.toFixed(1)}</Text>
-              <Text style={styles.imcClass}>{imcClassification}</Text>
-            </View>
-          )}
+            {imc !== null && (
+              <View style={styles.imcResultBox}>
+                <View style={styles.imcTopRow}>
+                  <Text style={styles.imcNumberText}>IMC: {imc.toFixed(1)}</Text>
+                  <StatusBadge label={imcClassification} tone={getImcBadgeTone(imc)} />
+                </View>
 
-          {/* Comorbidades (RF05) */}
-          <Text style={styles.label}>Comorbidades / Condições Pré-existentes</Text>
-          <View style={styles.chipsWrap}>
-            {COMORBIDADES_OPCOES.map((condicao) => {
-              const selected = comorbidades.includes(condicao);
-              const isNone = condicao === 'Nenhuma';
-              return (
-                <TouchableOpacity
-                  key={condicao}
-                  style={[
-                    styles.conditionChip,
-                    selected && (isNone ? styles.conditionChipNoneSelected : styles.conditionChipSelected),
-                  ]}
-                  onPress={() => toggleComorbidade(condicao)}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.conditionChipText,
-                      selected && (isNone ? styles.conditionChipNoneTextSelected : styles.conditionChipTextSelected),
-                    ]}
-                  >
-                    {selected ? '✓ ' : ''}{condicao}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                <View style={styles.imcScaleWrapper}>
+                  <View style={styles.imcBarTrack}>
+                    <View style={[styles.imcSegment, { backgroundColor: colors.semantic.info }]} />
+                    <View style={[styles.imcSegment, { backgroundColor: colors.semantic.success }]} />
+                    <View style={[styles.imcSegment, { backgroundColor: colors.semantic.warning }]} />
+                    <View style={[styles.imcSegment, { backgroundColor: colors.semantic.danger }]} />
+                  </View>
+                  <View
+                    style={[styles.imcPointer, { left: `${getImcPointerPercent(imc)}%` }]}
+                  />
+                  <View style={styles.imcScaleLabels}>
+                    <Text style={styles.imcScaleLabel}>&lt; 18,5</Text>
+                    <Text style={styles.imcScaleLabel}>18,5 – 24,9</Text>
+                    <Text style={styles.imcScaleLabel}>25 – 29,9</Text>
+                    <Text style={styles.imcScaleLabel}>≥ 30</Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
-          {/* Alergias (RF28) */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Alergias (medicamentos, alimentos ou outras)</Text>
-            <TextInput
-              placeholderTextColor="#999"
-              style={[styles.input, alergias.trim().length > 0 && styles.allergyInputActive]}
+            <ChipSelector
+              label="Comorbidades / Condições Pré-existentes"
+              options={COMORBIDADES_OPCOES}
+              selected={comorbidades}
+              multiple
+              onSelect={toggleComorbidade}
+            />
+
+            <AppInput
+              label="Alergias (medicamentos, alimentos ou outras)"
               placeholder="Ex: Dipirona, Penicilina, Frutos do mar, Látex"
               value={alergias}
               onChangeText={(text) => {
@@ -377,254 +423,305 @@ export default function ProfileScreen({ navigation }: Props) {
               multiline
             />
             {alergias.trim().length > 0 && (
-              <Text style={styles.allergyHintText}>
-                ⚠️ Alergias ficam destacadas no topo do seu perfil para segurança em atendimentos.
+              <View style={styles.allergyHintRow}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={colors.semantic.danger} />
+                <Text style={styles.allergyHintText}>
+                  Alergias ficam destacadas no topo do perfil e no prontuário PDF.
+                </Text>
+              </View>
+            )}
+
+            <AppButton
+              title="Salvar Dados Corporais e de Saúde"
+              icon="save-outline"
+              variant="primary"
+              onPress={handleSaveProfile}
+            />
+          </AppCard>
+
+          <AppCard variant="alert" tone="info">
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="water-outline" size={22} color={colors.brand.primary} />
+                <Text style={styles.sectionTitle}>Meta Diária de Água</Text>
+              </View>
+              {copos250ml ? <StatusBadge label={`${copos250ml} copos (250 ml)`} tone="info" /> : null}
+            </View>
+
+            {metaAguaMl !== null ? (
+              <View>
+                <Text style={styles.waterMainValue}>
+                  {metaAguaMl} ml ({metaAguaLitros} L)
+                </Text>
+                <Text style={styles.waterSubtext}>
+                  Cálculo diário recomendado: 35 ml × {pesoNumerico} kg.
+                </Text>
+
+                <View style={styles.waterCupsRow}>
+                  {Array.from({ length: coposVisuaisCount }).map((_, idx) => (
+                    <View key={idx} style={styles.waterCupChip}>
+                      <Ionicons name="water" size={16} color={colors.brand.primary} />
+                    </View>
+                  ))}
+                  {copos250ml && copos250ml > coposVisuaisCount ? (
+                    <Text style={styles.waterExtraLabel}>+{copos250ml - coposVisuaisCount} copos</Text>
+                  ) : null}
+                </View>
+
+                {frequenciaAtividade === 'Ativo (Pratico Exercícios)' && (
+                  <View style={styles.waterTipBox}>
+                    <Ionicons name="information-circle-outline" size={18} color={colors.semantic.info} />
+                    <Text style={styles.waterTipText}>
+                      Por praticar exercícios regularmente, reponha líquidos extras durante e após os treinos.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.waterSubtext}>
+                Informe seu peso corporal (kg) acima para calcular sua meta diária recomendada em ml e copos.
               </Text>
             )}
-          </View>
+          </AppCard>
 
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#0056b3' }]} onPress={handleSaveProfile}>
-            <Text style={styles.actionButtonText}>Salvar Dados Corporais e de Saúde</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Card Meta Diária de Água (RF13) */}
-        <View style={styles.waterCard}>
-          <View style={styles.waterHeaderRow}>
-            <Text style={styles.waterTitle}>💧 Meta Diária de Água (RF13)</Text>
-          </View>
-          {metaAguaMl !== null ? (
-            <>
-              <Text style={styles.waterValue}>
-                {metaAguaMl} ml ({metaAguaLitros} L)
-              </Text>
-              <Text style={styles.waterSubtext}>
-                Aproximadamente {copos250ml} copos de 250 ml por dia (cálculo padrão: 35 ml × {pesoNumerico} kg).
-                {frequenciaAtividade === 'Ativo (Pratico Exercícios)'
-                  ? '\n💡 Por ser fisicamente ativo(a), lembre-se de repor líquidos extras durante e após os treinos.'
-                  : ''}
-              </Text>
-            </>
-          ) : (
-            <Text style={styles.waterSubtext}>
-              Informe seu peso corporal (kg) no cartão acima para calcular automaticamente sua meta diária recomendada (35 ml × peso).
-            </Text>
-          )}
-        </View>
-
-        {/* Gráfico de Evolução de Peso e IMC (RF33) */}
-        <BarChartCard
-          title="📊 Evolução de Peso & IMC (RF33)"
-          subtitle={
-            chartMode === 'peso'
-              ? 'Histórico do seu peso corporal salvo ao atualizar o perfil.'
-              : 'Histórico do Índice de Massa Corporal (IMC).'
-          }
-          data={evolutionChartData}
-          emptyMessage={
-            chartMode === 'imc'
-              ? 'Salve Peso e Altura no perfil para acompanhar a evolução do IMC.'
-              : 'Salve seu peso corporal no perfil para acompanhar a evolução ao longo do tempo.'
-          }
-          legend={
-            chartMode === 'imc'
-              ? [
-                  { label: 'Abaixo (<18.5)', color: '#3B82F6' },
-                  { label: 'Normal', color: '#10B981' },
-                  { label: 'Sobrepeso', color: '#F59E0B' },
-                  { label: 'Obesidade', color: '#EF4444' },
-                ]
-              : undefined
-          }
-        >
-          <View style={styles.chartToggleRow}>
-            <TouchableOpacity
-              style={[styles.chartToggleBtn, chartMode === 'peso' && styles.chartToggleBtnActive]}
-              onPress={() => setChartMode('peso')}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.chartToggleText, chartMode === 'peso' && styles.chartToggleTextActive]}>
-                ⚖️ Peso (kg)
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.chartToggleBtn, chartMode === 'imc' && styles.chartToggleBtnActive]}
-              onPress={() => setChartMode('imc')}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.chartToggleText, chartMode === 'imc' && styles.chartToggleTextActive]}>
-                📏 IMC
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </BarChartCard>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Frequência de Atividades</Text>
-          <View style={styles.activityList}>
-            {activities.map((activity) => (
+          <BarChartCard
+            title="Evolução de Peso & IMC"
+            subtitle={
+              chartMode === 'peso'
+                ? 'Histórico do seu peso corporal salvo ao atualizar o perfil.'
+                : 'Histórico do Índice de Massa Corporal (IMC).'
+            }
+            data={evolutionChartData}
+            emptyMessage={
+              chartMode === 'imc'
+                ? 'Salve Peso e Altura no perfil para acompanhar a evolução do IMC.'
+                : 'Salve seu peso corporal no perfil para acompanhar a evolução ao longo do tempo.'
+            }
+            legend={
+              chartMode === 'imc'
+                ? [
+                    { label: 'Abaixo (<18,5)', color: colors.semantic.info },
+                    { label: 'Normal', color: colors.semantic.success },
+                    { label: 'Sobrepeso', color: colors.semantic.warning },
+                    { label: 'Obesidade', color: colors.semantic.danger },
+                  ]
+                : undefined
+            }
+          >
+            <View style={styles.chartToggleRow}>
               <TouchableOpacity
-                key={activity}
-                style={[
-                  styles.activityButton,
-                  frequenciaAtividade === activity && styles.selectedActivityButton
-                ]}
-                onPress={() => updatePerfil({ frequenciaAtividade: activity })}
-                activeOpacity={0.7}
+                style={[styles.chartToggleBtn, chartMode === 'peso' && styles.chartToggleBtnActive]}
+                onPress={() => setChartMode('peso')}
+                activeOpacity={0.8}
               >
-                <Text style={[
-                  styles.activityText,
-                  frequenciaAtividade === activity && styles.selectedActivityText
-                ]}>{activity}</Text>
+                <Ionicons
+                  name="scale-outline"
+                  size={16}
+                  color={chartMode === 'peso' ? colors.text.inverse : colors.text.secondary}
+                />
+                <Text style={[styles.chartToggleText, chartMode === 'peso' && styles.chartToggleTextActive]}>
+                  Peso (kg)
+                </Text>
               </TouchableOpacity>
-            ))}
-          </View>
+              <TouchableOpacity
+                style={[styles.chartToggleBtn, chartMode === 'imc' && styles.chartToggleBtnActive]}
+                onPress={() => setChartMode('imc')}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="analytics-outline"
+                  size={16}
+                  color={chartMode === 'imc' ? colors.text.inverse : colors.text.secondary}
+                />
+                <Text style={[styles.chartToggleText, chartMode === 'imc' && styles.chartToggleTextActive]}>
+                  IMC
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </BarChartCard>
         </View>
+      )}
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Meta Semanal</Text>
-          <Text style={styles.infoText}>{treinosNaSemana} de 5 treinos realizados nesta semana</Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${Math.min(100, (treinosNaSemana / 5) * 100)}%` }]} />
-          </View>
-        </View>
+      {activeTab === 'educacao' && (
+        <View style={styles.tabSection}>
+          <AppCard variant="elevated">
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="trophy-outline" size={20} color={colors.semantic.success} />
+                <Text style={styles.sectionTitle}>Meta Semanal de Treinos</Text>
+              </View>
+              <StatusBadge
+                label={treinosNaSemana >= 5 ? 'Meta atingida' : `${treinosNaSemana}/5 semana`}
+                tone={treinosNaSemana >= 5 ? 'success' : 'info'}
+              />
+            </View>
+            <Text style={styles.goalCountText}>
+              {treinosNaSemana} de 5 treinos realizados nesta semana
+            </Text>
+            <View style={styles.progressTrack}>
+              <View
+                style={[styles.progressFill, { width: `${Math.min(100, (treinosNaSemana / 5) * 100)}%` }]}
+              />
+            </View>
+          </AppCard>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Registrar Treino (RF29 & RF31)</Text>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Atividade realizada</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.input}
+          <AppCard variant="default">
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="walk-outline" size={20} color={areaAccent.color} />
+                <Text style={styles.sectionTitle}>Nível de Atividade Semanal</Text>
+              </View>
+            </View>
+            <ChipSelector
+              options={ACTIVITIES}
+              selected={frequenciaAtividade}
+              onSelect={(activity) => updatePerfil({ frequenciaAtividade: activity })}
+              accentColor={areaAccent.color}
+              accentBg={areaAccent.bg}
+            />
+          </AppCard>
+
+          <AppCard variant="elevated">
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="barbell-outline" size={20} color={areaAccent.color} />
+                <Text style={styles.sectionTitle}>Registrar Treino</Text>
+              </View>
+            </View>
+
+            <AppInput
+              label="Atividade realizada"
               placeholder="Ex: Caminhada no parque, Musculação"
               value={desc}
               onChangeText={setDesc}
             />
-          </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Duração (minutos)</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.input}
+            <AppInput
+              label="Duração"
+              unitSuffix="min"
               placeholder="Ex: 45"
               value={duracaoMin}
               onChangeText={(text) => setDuracaoMin(text.replace(/[^\d]/g, ''))}
               keyboardType="numeric"
               maxLength={4}
             />
-          </View>
 
-          <Text style={styles.label}>Intensidade</Text>
-          <View style={styles.intensityRow}>
-            {INTENSIDADES.map((item) => {
-              const selected = intensidade === item.tipo;
-              return (
-                <TouchableOpacity
-                  key={item.tipo}
-                  style={[styles.intensityBtn, selected && styles.intensityBtnSelected]}
-                  onPress={() => setIntensidade(item.tipo)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.intensityBtnText, selected && styles.intensityBtnTextSelected]}>
-                    {item.label}
+            <ChipSelector
+              label="Intensidade"
+              options={INTENSIDADES.map((i) => ({ value: i.tipo, label: i.label }))}
+              selected={intensidade}
+              onSelect={setIntensidade}
+              accentColor={areaAccent.color}
+              accentBg={areaAccent.bg}
+            />
+
+            {caloriasEstimadas !== null && (
+              <View style={styles.calorieBox}>
+                <Ionicons name="flame-outline" size={22} color={colors.semantic.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.calorieTitle}>Gasto calórico estimado: ~{caloriasEstimadas} kcal</Text>
+                  <Text style={styles.calorieSub}>
+                    Baseado em {duracaoNum} min de intensidade {intensidade.toLowerCase()} ({pesoParaTreino} kg
+                    {!hasValidPeso ? ' padrão' : ''}).
                   </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {caloriasEstimadas !== null && (
-            <View style={styles.caloriePreviewBox}>
-              <Text style={styles.caloriePreviewTitle}>
-                🔥 Gasto calórico estimado: ~{caloriasEstimadas} kcal
-              </Text>
-              <Text style={styles.caloriePreviewSub}>
-                Baseado em {duracaoNum} min de intensidade {intensidade.toLowerCase()} ({pesoParaTreino} kg{!hasValidPeso ? ' padrão' : ''}).
-              </Text>
-            </View>
-          )}
-
-          <TouchableOpacity style={styles.actionButton} onPress={handleRegistrarTreino}>
-            <Text style={styles.actionButtonText}>+ Salvar Treino</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.historyContainer}>
-          <Text style={styles.historyTitle}>Últimos Treinos</Text>
-          {treinos.length === 0 ? (
-            <Text style={styles.emptyText}>Você ainda não registrou treinos.</Text>
-          ) : (
-            treinos.slice().reverse().slice(0, 8).map((t) => (
-              <View key={t.id} style={styles.workoutHistoryCard}>
-                <Text style={styles.workoutHistoryTitle}>
-                  {new Date(t.data).toLocaleDateString('pt-BR')} — {t.descricao}
-                </Text>
-                {(t.duracaoMinutos || t.intensidade) && (
-                  <Text style={styles.workoutHistoryMeta}>
-                    {t.duracaoMinutos ? `⏱️ ${t.duracaoMinutos} min` : ''}
-                    {t.duracaoMinutos && t.intensidade ? '  •  ' : ''}
-                    {t.intensidade ? `Intensidade: ${t.intensidade}` : ''}
-                  </Text>
-                )}
-                {t.caloriasEstimadas !== undefined && t.caloriasEstimadas > 0 && (
-                  <View style={styles.workoutKcalBadge}>
-                    <Text style={styles.workoutKcalBadgeText}>🔥 ~{t.caloriasEstimadas} kcal gastas</Text>
-                  </View>
-                )}
+                </View>
               </View>
-            ))
+            )}
+
+            <AppButton
+              title="Salvar Treino"
+              icon="add-circle-outline"
+              variant="primary"
+              onPress={handleRegistrarTreino}
+            />
+          </AppCard>
+
+          <AppButton
+            title="Abrir Biblioteca de Exercícios Adaptados"
+            icon="book-outline"
+            variant="secondary"
+            onPress={() => setModalVisible(true)}
+          />
+
+          <AppCard variant="default">
+            <Text style={[styles.sectionTitle, { marginBottom: spacing.md }]}>Últimos Treinos</Text>
+            {treinos.length === 0 ? (
+              <EmptyState
+                icon="fitness-outline"
+                title="Nenhum treino registrado"
+                description="Registre caminhadas, alongamentos ou atividades acima para acompanhar sua meta semanal."
+              />
+            ) : (
+              <View style={styles.historyStack}>
+                {treinos
+                  .slice()
+                  .reverse()
+                  .slice(0, 10)
+                  .map((t) => (
+                    <View key={t.id} style={styles.workoutCard}>
+                      <View style={styles.workoutHeader}>
+                        <Text style={styles.workoutTitle}>
+                          {new Date(t.data).toLocaleDateString('pt-BR')} — {t.descricao}
+                        </Text>
+                        {t.caloriasEstimadas !== undefined && t.caloriasEstimadas > 0 && (
+                          <StatusBadge label={`~${t.caloriasEstimadas} kcal`} tone="warning" />
+                        )}
+                      </View>
+                      {(t.duracaoMinutos || t.intensidade) && (
+                        <Text style={styles.workoutMeta}>
+                          {[
+                            t.duracaoMinutos ? `${t.duracaoMinutos} min` : '',
+                            t.intensidade ? `Intensidade: ${t.intensidade}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+              </View>
+            )}
+          </AppCard>
+        </View>
+      )}
+
+      {activeTab === 'fisioterapia' && <FisioterapiaPainSection />}
+
+      <AppModal
+        visible={modalVisible}
+        title="Biblioteca de Exercícios"
+        subtitle={
+          resultadoBiblioteca.comorbidadesAtivas.length > 0
+            ? `Adaptada para: ${resultadoBiblioteca.comorbidadesAtivas.join(', ')}`
+            : 'Sugestões seguras para mobilidade e condicionamento.'
+        }
+        onClose={() => setModalVisible(false)}
+        footer={<AppButton title="Fechar" variant="outline" onPress={() => setModalVisible(false)} />}
+      >
+        <View style={{ gap: spacing.md }}>
+          {resultadoBiblioteca.avisoLiberacaoMedica && (
+            <AppCard variant="alert" tone="warning">
+              <Text style={styles.modalWarningTitle}>Liberação e Segurança</Text>
+              <Text style={styles.modalWarningText}>{resultadoBiblioteca.avisoLiberacaoMedica}</Text>
+            </AppCard>
           )}
+          {resultadoBiblioteca.exercicios.map((item) => (
+            <AppCard key={item.id} variant="outlined">
+              <View style={styles.exerciseHeader}>
+                <Text style={styles.exerciseTitle}>{item.nome}</Text>
+                <StatusBadge
+                  label={item.intensidade}
+                  tone={item.intensidade === 'Leve' ? 'success' : 'info'}
+                />
+              </View>
+              <Text style={styles.exerciseDesc}>{item.descricao}</Text>
+              {item.cuidados ? (
+                <Text style={styles.exerciseCare}>Cuidado: {item.cuidados}</Text>
+              ) : null}
+            </AppCard>
+          ))}
         </View>
-
-        <TouchableOpacity style={styles.actionButtonSecondary} onPress={() => setModalVisible(true)}>
-          <Text style={styles.actionButtonTextSecondary}>Biblioteca de Exercícios</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.replace('Inicial')}>
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Biblioteca de Exercícios</Text>
-            <ScrollView>
-              {resultadoBiblioteca.comorbidadesAtivas.length > 0 && (
-                <View style={{ backgroundColor: '#FEF3C7', borderColor: '#F59E0B', borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                  <Text style={{ fontWeight: '700', color: '#92400E', fontSize: 13, marginBottom: 4 }}>
-                    Filtrado para: {resultadoBiblioteca.comorbidadesAtivas.join(', ')}
-                  </Text>
-                  <Text style={{ color: '#78350F', fontSize: 13 }}>
-                    {resultadoBiblioteca.avisoLiberacaoMedica}
-                  </Text>
-                </View>
-              )}
-              {resultadoBiblioteca.exercicios.map((item) => (
-                <View key={item.id} style={styles.exerciseItem}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={[styles.exerciseName, { flex: 1 }]}>{item.nome}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0B6E99' }}>
-                      Intensidade {item.intensidade}
-                    </Text>
-                  </View>
-                  <Text style={styles.exerciseDesc}>{item.descricao}</Text>
-                  {item.cuidados && (
-                    <Text style={{ fontSize: 12, color: '#B45309', marginTop: 4 }}>
-                      Cuidado: {item.cuidados}
-                    </Text>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setModalVisible(false)}>
-              <Text style={styles.closeModalText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-    </SafeAreaView>
+      </AppModal>
+    </ScreenShell>
   );
 }
-
-
