@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, layout, radii, spacing, typography } from '../../theme/tokens';
 
@@ -22,7 +22,7 @@ interface ScreenShellProps {
   scrollable?: boolean;
   children: React.ReactNode;
   contentStyle?: ViewStyle;
-  scrollRef?: React.RefObject<ScrollView | null>;
+  scrollRef?: React.RefObject<React.ComponentRef<typeof ScrollView> | null>;
 }
 
 export function ScreenShell({

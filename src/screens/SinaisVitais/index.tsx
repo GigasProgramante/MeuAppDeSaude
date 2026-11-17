@@ -94,7 +94,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     'bpm' | 'glicose' | 'pressao' | 'oxigenacao' | 'temperatura'
   >('bpm');
 
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const lastNotificationTime = useRef<Record<string, number>>({});
 
   const addSinalVital = useStore((state) => state.addSinalVital);

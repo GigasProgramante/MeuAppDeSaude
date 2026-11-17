@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { FeedbackProvider } from './src/components/ui';
 import { configureNotificationHandler } from './src/services/notifications';
@@ -8,8 +9,10 @@ configureNotificationHandler();
 
 export default function App() {
   return (
-    <FeedbackProvider>
-      <AppNavigator />
-    </FeedbackProvider>
+    <SafeAreaProvider>
+      <FeedbackProvider>
+        <AppNavigator />
+      </FeedbackProvider>
+    </SafeAreaProvider>
   );
 }

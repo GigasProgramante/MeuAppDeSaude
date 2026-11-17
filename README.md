@@ -8,7 +8,7 @@ Aplicativo móvel e web *offline-first* desenvolvido em **React Native + Expo + 
 
 ## Tecnologias e Arquitetura
 
-- **React Native (`0.81.5`) & Expo (SDK `54`) + React (`19.1.0`):** Suporte multiplataforma para Android, iOS e Expo Web.
+- **React Native (`0.88.1`) & Expo (SDK `58`) + React (`19.3.0`):** Suporte multiplataforma para Android, iOS e Expo Web.
 - **TypeScript (`strict: true`):** Tipagem estática ponta a ponta em [`src/types/index.ts`](src/types/index.ts).
 - **Design System Interno & Acessibilidade:** Tokens visuais em [`src/theme/tokens.ts`](src/theme/tokens.ts) e 13 componentes reutilizáveis em [`src/components/ui/`](src/components/ui/index.ts) (`ScreenShell`, `AppCard`, `AppButton`, `AppInput`, `ChipSelector`, `SegmentedTabs`, `StatusBadge`, `AppModal`, `EmptyState`, `FeedbackProvider`, `StepperInput`, `PainScaleSelector`, `PresetRemindersCard`), com tipografia mínima de `13 px`, alvos de toque `>= 44 px`, ícones exclusivos via `@expo/vector-icons` e largura responsiva para Web (`680 px` / `960 px`).
 - **Zustand + AsyncStorage Isolado por Contexto (`src/store/useStore.ts`):** Persistência local *offline-first* com IDs UUID v4 via `expo-crypto`, isolamento de dados entre modo visitante (`guest`) e contas autenticadas (`userId`), e fila de sincronização offline em [`src/services/sync.ts`](src/services/sync.ts).
@@ -21,7 +21,7 @@ Aplicativo móvel e web *offline-first* desenvolvido em **React Native + Expo + 
 ## Como Instalar e Rodar
 
 ### Pré-requisitos
-- **Node.js** `>= 20` e **npm**
+- **Node.js** `>= 22.13` e **npm**
 - Aplicativo **Expo Go** ou build nativo (para testes em Android/iOS)
 
 ### Passo a passo
