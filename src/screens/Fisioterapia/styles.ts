@@ -19,5 +19,14 @@ export const styles = StyleSheet.create({
   historyTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 8 },
   historyItemText: { fontSize: 16, color: '#1F2937', marginBottom: 6, lineHeight: 22 },
   emptyHistory: { fontSize: 16, color: '#4B5563', fontStyle: 'italic' },
+  historyItem: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  historyItemDetail: { fontSize: 15, color: '#92400E', fontWeight: '600', lineHeight: 20 },
+  chipSection: { marginBottom: 12 },
+  chipLabel: { fontSize: 17, fontWeight: 'bold', color: '#1F2937', marginBottom: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 22, borderWidth: 1.5, borderColor: '#D97706', backgroundColor: '#fff' },
+  chipActive: { backgroundColor: '#D97706', borderColor: '#B45309' },
+  chipText: { fontSize: 16, color: '#92400E', fontWeight: '600' },
+  chipTextActive: { color: '#fff', fontWeight: '800' },
 });
 
