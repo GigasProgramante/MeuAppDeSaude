@@ -28,7 +28,7 @@ export default function TelaInicial({ navigation }: Props) {
               {perfil?.fotoUri ? (
                 <Image source={{ uri: perfil.fotoUri }} style={{ width: 44, height: 44, borderRadius: 22 }} />
               ) : (
-                <Ionicons name="settings-sharp" size={28} color="#999" />
+                <Ionicons name="settings-sharp" size={28} color="#374151" />
               )}
             </TouchableOpacity>
           </View>
@@ -72,10 +72,30 @@ export default function TelaInicial({ navigation }: Props) {
             activeOpacity={0.8}
           >
             <MaterialCommunityIcons name="run" size={54} color="#333" style={[styles.icon, { color: '#333' }]} />
-            <Text style={[styles.cardText, { color: '#333' }]}>Corpo & Movimento</Text>
-            <Text style={[styles.courseTag, { color: 'rgba(51, 51, 51, 0.7)' }]}>Educação Física & Fisioterapia</Text>
+            <Text style={[styles.cardText, { color: '#1F2937' }]}>Corpo & Movimento</Text>
+            <Text style={[styles.courseTag, { color: '#1F2937' }]}>Educação Física & Fisioterapia</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Card Institucional / Propaganda UNC (About Us) */}
+        <TouchableOpacity
+          style={styles.uncPromoCard}
+          onPress={() => navigation.navigate('SobreUNC')}
+          activeOpacity={0.88}
+        >
+          <View style={styles.uncPromoCircle}>
+            <Text style={styles.uncWatermark}>UNC</Text>
+          </View>
+          <Text style={styles.uncPromoEyebrow}>A UNC NA SUA MÃO • SERVIÇOS À COMUNIDADE</Text>
+          <Text style={styles.uncPromoTitle}>Clínicas-escola e serviços da UNC.</Text>
+          <Text style={styles.uncPromoDesc}>
+            Confira os atendimentos prestados à comunidade pelos cursos de saúde, contatos de agendamento e rotas por GPS.
+          </Text>
+          <View style={styles.uncPromoCtaRow}>
+            <Text style={styles.uncPromoCtaText}>Ver Serviços da UNC</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

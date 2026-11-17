@@ -2,91 +2,99 @@
 
 > [!NOTE]
 > **Status:** 
-> ✅ Implementado | ⚠️ Parcial / Mock | ❌ Pendente
+> ✅ Implementado | ⚠️ Parcial / Em andamento | ❌ Pendente
 
 ---
 
 > [!IMPORTANT]
 > ## 👤 Paciente — Acesso & Cadastro (RF01–RF14)
 
-- ⚠️ **RF01:** Tela de login e cadastro com e-mail, senha e confirmação de senha (Login Automatico com o GOOGLE)
-- ✅ **RF02:** Cadastro de perfil do paciente: idade, peso, altura, sexo (Masculino / Feminino / Outro) com opção de edição futura
-- ✅ **RF04:** Cálculo automático de IMC com base nos dados cadastrados e exibição da classificação (Abaixo do peso, Normal, Sobrepeso, Obesidade)
-- ❌ **RF05:** Após IMC, coleta de informações médicas: diabetes, problema cardíaco, hipertensão
-- ✅ **RF06:** Registro e histórico de BPM (batimentos por minuto) com opção de editar e salvar medições futuras
-- ✅ **RF07:** Registro e histórico de glicose (mg/dL) com opção de editar e salvar medições futuras
-- ⚠️ **RF08:** Lembretes de medicamentos com cadastro de nome, dose, periodicidade (diária, semanal, mensal, trimestral, semestral) e alarme em horário específico
-- ⚠️ **RF09:** Aferição diária de humor: Feliz, Triste, Nervoso, Ansioso — com histórico por data
-- ❌ **RF10:** Registro de nível de atividade física: Ativo, De vez em quando, Não pratico
-- ✅ **RF12:** Lembretes de exercícios físicos: alongamento, academia, pilates — com dias e horários configuráveis
-- ❌ **RF13:** Lembrete de hidratação com sugestão de quantidade de água calculada com base no peso, IMC e nível de atividade
-- ⚠️ **RF14:** Gerenciamento de lembretes: editar frequência, dias da semana e horário de qualquer lembrete ativo
+- ✅ **RF01:** Tela de login e cadastro com e-mail, senha e confirmação de senha — Login (`signInWithPassword`, Google OAuth `signInWithIdToken`, `admin/admin`, acesso rápido sem login e recuperação de senha), Cadastro (`supabase.auth.signUp` + registro inicial em `perfis`), Configurações (`resetPasswordForEmail` e `signOut`) e persistência automática de sessão via `getSession` + `onAuthStateChange` no `AppNavigator`.
+- ✅ **RF02:** Cadastro de perfil do paciente: idade, peso, altura, sexo (`Masculino` / `Feminino` / `Outro`), comorbidades e alergias com persistência e edição no `useStore` (`Perfil`). *(Nota: upload de avatar para o bucket `avatars` integrado nas `Configurações`).*
+- ✅ **RF04:** Cálculo automático de IMC com base nos dados cadastrados e exibição da classificação (Abaixo do peso, Normal, Sobrepeso, Obesidade).
+- ✅ **RF05:** Coleta de informações médicas/comorbidades no `Perfil`: **Diabetes**, **Hipertensão**, **Problema Cardíaco** e **Nenhuma**, persistidas no `useStore`.
+- ✅ **RF06:** Registro, histórico, edição, exclusão e gráfico de evolução de BPM (batimentos por minuto) na tela `SinaisVitais`.
+- ✅ **RF07:** Registro (com tipo Jejum, Pré-prandial ou Pós-prandial), histórico, edição, exclusão e gráfico de evolução de glicose (`mg/dL`) na tela `SinaisVitais`.
+- ⚠️ **RF08:** Lembretes de medicamentos migrados para o `useStore` com cadastro, edição, alarme diário via `expo-notifications` e baixa automática no estoque (`Lembretes`); suporte avançado de periodicidades e serviço centralizado pendentes ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)).
+- ✅ **RF09:** Aferição diária de humor (`Feliz`, `Triste`, `Nervoso`, `Ansioso`) com fatores de influência, gráfico semanal e linha do tempo cronológica na tela `Humor`.
+- ✅ **RF10:** Registro de nível de atividade física (`Ativo (Pratico Exercícios)`, `De Vez em Quando`, `Não Pratico`) com persistência no `useStore` (`Perfil`).
+- ⚠️ **RF12:** Lembretes de ações e exercícios físicos com horário diário e edição em `Lembretes`; seleção de dias específicos da semana pendente ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)).
+- ✅ **RF13:** Card automático de **Meta Diária de Água** (`35 ml × peso corporal`) com conversão em litros e copos de `250 ml` na tela `Perfil`.
+- ✅ **RF14:** Gerenciamento completo de lembretes no `useStore` — criação, edição (com reagendamento de alarme), marcação como concluído e exclusão (`Lembretes`).
 
 ---
 
 > [!TIP]
 > ## 💊 Farmácia (RF15–RF21)
 
-- ❌ **RF15:** Cadastro de medicamentos em uso: nome, dosagem, forma farmacêutica (comprimido, xarope, injeção, etc.) e prescritor
-- ❌ **RF17:** Controle de estoque domiciliar: quantidade em casa, data de vencimento, alerta quando o estoque está baixo ou o medicamento vai vencer
-- ❌ **RF18:** Registro de adesão ao tratamento: o paciente confirma se tomou o medicamento no horário programado (sim / não / tomei depois)
-- ❌ **RF19:** Orientações de armazenamento do medicamento (temperatura, luz, umidade) exibidas no cadastro
-- ❌ **RF20:** Histórico de medicamentos anteriores (já descontinuados) com data de início e término
-- ❌ **RF21:** Exportação do relatório de medicamentos em PDF para levar a consultas ou à farmácia
+- ✅ **RF15:** Cadastro e edição de medicamentos na aba Estoque (`Lembretes`) com nome, dosagem, forma farmacêutica, quantidade em estoque e **médico prescritor**.
+- ✅ **RF17:** Controle completo de estoque domiciliar com **data de validade** (aviso de vencido ou próximo do vencimento) e **alerta visual vermelho (`⚠️ Estoque Baixo!`)** quando a quantidade for `<= 5` unidades.
+- ✅ **RF18:** **Baixa automática de estoque (`-1` unidade)** no medicamento correspondente ao confirmar que o lembrete de remédio foi tomado, com aviso caso o estoque atinja nível baixo ou zerado.
+- ✅ **RF19:** **Orientações de armazenamento** do medicamento (ex.: *Temperatura ambiente*, *Local seco e arejado*, *Geladeira 2–8 °C*, *Proteger da luz*) cadastradas, exibidas no cartão e exportadas no PDF.
+- ✅ **RF20:** **Histórico de medicamentos descontinuados**, permitindo pausar/descontinuar um medicamento com data de término ou reativá-lo posteriormente.
+- ⚠️ **RF21:** Exportação do relatório de medicamentos em PDF/impressão já funciona (`expo-print` + `expo-sharing`, incluindo prescritor, validade, armazenamento e situação); ampliação para prontuário resumo do paciente pendente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
 
 ---
 
 > [!WARNING]
 > ## 🩺 Enfermagem (RF22–RF28)
 
-- ✅ **RF22:** Registro de sinais vitais completos: temperatura corporal, pressão arterial (sistólica/diastólica), saturação de oxigênio (SpO2), além de BPM e glicose já existentes. Ao salvar, exibir também no histórico da tela de humor.
-- ✅ **RF23:** Alertas de valores fora do intervalo de referência para cada sinal vital, com orientação de procurar atendimento
-- ❌ **RF26:** Lembrete de consultas e exames agendados com data, local e tipo de procedimento
-- ❌ **RF27:** Checklist diário de cuidados básicos (higiene, posicionamento, pressão para acamados)
-- ❌ **RF28:** Registro de alergias a medicamentos, látex ou alimentos com destaque visual no perfil do paciente
+- ✅ **RF22:** Registro completo de sinais vitais na tela `SinaisVitais`: **Temperatura Corporal (`°C`)**, Pressão Arterial (`sistólica/diastólica`), Saturação de Oxigênio (`SpO2`), BPM e Glicemia — com edição/exclusão, gráfico interativo de evolução e exibição integrada na linha do tempo de `Humor`.
+- ✅ **RF23:** Alertas automáticos (em tempo real com debounce e ao salvar) para valores fora da faixa de referência, incluindo **Febre (`> 37.8 °C`)**, **Hipotermia (`< 35.0 °C`)**, pressão convergente/divergente e glicemia por contexto.
+- ⚠️ **RF26:** Lembrete genérico com categoria *Ida a consultas* disponível em `Lembretes`; campos estruturados para local e procedimento seguem pendentes.
+- ✅ **RF27:** **Checklist Diário de Cuidados Básicos e Higiene** (6 itens práticos de higiene, hidratação, mudança de decúbito, inspeção de pele, medicação e ambiente) com modal interativo e progresso diário salvo no `useStore`.
+- ✅ **RF28:** Cadastro de **Alergias** (medicamentos, alimentos, látex) na tela `Perfil`, exibido em **banner vermelho de destaque clínico** no topo do perfil do paciente.
 
 ---
 
 > [!TIP]
 > ## 🏃 Educação Física (RF29–RF35)
 
-- ❌ **RF29:** Diário de treinos: o paciente registra tipo de exercício, duração, intensidade (leve, moderado, intenso) e como se sentiu
-- ❌ **RF30:** Meta semanal de atividade física com progresso visual (ex: 3 de 5 treinos realizados)
-- ❌ **RF31:** Cálculo estimado de gasto calórico com base em peso, tipo de atividade e duração
-- ❌ **RF32:** Biblioteca de exercícios adaptados por condição de saúde (hipertenso, diabético, gestante) com instruções em texto e/ou vídeo
-- ❌ **RF33:** Registro de histórico de peso e IMC ao longo do tempo com gráfico de evolução
+- ✅ **RF29:** **Diário de Treinos** no `Perfil`: registro de descrição, **Duração (minutos)** e **Intensidade (`Leve`, `Moderado`, `Intenso`)** salvos no `useStore`.
+- ✅ **RF30:** **Meta Semanal** de atividade física com barra de progresso visual (`X de 5 treinos`) em `Perfil`.
+- ✅ **RF31:** **Cálculo estimado de gasto calórico (`kcal`)** calculado ao vivo e persistido com base no peso corporal, duração e intensidade (MET).
+- ⚠️ **RF32:** Biblioteca local de exercícios com instruções em modal (`Perfil`); falta segmentação adaptada por condição de saúde (hipertenso, diabético, gestante).
+- ✅ **RF33:** Registro histórico (`historicoImc` no `useStore`) e **gráfico interativo de evolução de Peso e IMC** com alternância de visualização na tela `Perfil`.
 
 ---
 
 > [!CAUTION]
 > ## 🧠 Psicologia (RF36–RF42)
 
-- ✅ **RF36:** Diário emocional: registro diário de humor expandido (escalas de ansiedade, estresse, bem-estar) com campo de texto livre opcional
-- ❌ **RF37:** Gráfico de evolução emocional ao longo das semanas para identificar padrões (ex: sempre ansioso às segundas)
-- ❌ **RF38:** Técnicas de regulação emocional acessíveis no app: respiração guiada, grounding 5-4-3-2-1, relaxamento muscular progressivo
-- ❌ **RF40:** Área de crise: botão de acesso rápido a recursos de saúde mental (CVV, CAPS) e contato de emergência cadastrado pelo paciente
-- ❌ **RF41:** Questionários validados de triagem: PHQ-9 (depressão), GAD-7 (ansiedade) — com resultado orientativo e recomendação de buscar profissional
-- ❌ **RF42:** Lembrete de autocuidado: meditação, hobbies, tempo de descanso — configurável pelo usuário
+- ⚠️ **RF36:** Diário emocional — registro de humor com fatores de influência já funciona; campo de texto livre opcional (*Como foi seu dia?*) pendente ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
+- ✅ **RF37:** **Gráfico semanal de evolução/frequência emocional** exibindo a distribuição dos registros de humor dos últimos 7 dias (`Humor`).
+- ❌ **RF38:** Modal interativo passo a passo com técnicas de regulação emocional (respiração guiada e grounding `5-4-3-2-1`) ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
+- ❌ **RF40:** Botão de destaque **SOS / Preciso de Ajuda** na tela `Humor` com modal de contatos de crise (CVV `188`, SAMU `192`, CAPS) ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)). *(Obs.: resultados críticos do PHQ-9/GAD-7 já exibem alerta imediato com orientação ao CVV 188).*
+- ✅ **RF41:** Questionários validados de triagem **PHQ-9 (depressão)** e **GAD-7 (ansiedade)** na tela `Humor`, com cálculo automático de escore, classificação orientativa de risco e persistência na linha do tempo (`useStore`).
+- ❌ **RF42:** Registro simples de sono e lembretes configuráveis de autocuidado ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
 
 ---
 
 > [!NOTE]
 > ## 🦵 Fisioterapia (RF43–RF48)
 
-- ❌ **RF45:** Vídeo ou imagem ilustrativa de cada exercício terapêutico para execução correta em casa
-- ❌ **RF46:** Registro de mobilidade e amplitude de movimento ao longo do tratamento com evolução gráfica
-- ❌ **RF47:** Lembrete de sessão de fisioterapia com local, terapeuta responsável e orientações pré-sessão
-- ❌ **RF48:** Registro de postura e ergonomia: alertas de postura para quem trabalha sentado, com intervalos de descanso configuráveis
+- ⚠️ **RF43:** Escala de dor EVA (`0` a `10`) e histórico de evolução já implementados (`Fisioterapia`); seleção de região corporal e tipo de dor pendentes ([#9](https://github.com/bonasticos/MeuAppDeSaude/issues/9)).
+- ❌ **RF45:** Modal de Exercícios Terapêuticos de Hoje com instruções visuais ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
+- ✅ **RF46:** **Gráfico de evolução da dor (EVA 0–10)** com classificação visual por gravidade (leve, moderada e intensa) dos últimos 7 registros na tela `Fisioterapia`.
+- ❌ **RF47:** Lembrete de sessão de fisioterapia com local, terapeuta responsável e orientações pré-sessão.
+- ❌ **RF48:** Modal de Lembretes de Postura e ergonomia ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
+
+---
+
+> [!NOTE]
+> ## 🎓 Curricularização & Serviços da UNC à Comunidade (Implementado)
+
+- ✅ **SobreUNC:** Aba acessível via `Inicial`, `Login` e `Configuracoes` dedicada aos **serviços prestados à comunidade** pelos cursos de **Medicina, Fisioterapia, Odontologia, Psicologia e Enfermagem** nas **Clínicas-Escola** e **Espaço Mais Saúde**, com abertura de informações e agendamentos em modal (abas *Serviços*, *Agendamento* e *GPS & Campi*), **localização via GPS (`expo-location`)** para calcular distância/rotas até os campi e registro objetivo do app como **projeto de curricularização da extensão**.
 
 ---
 
 ## ⚙️ Requisitos Não Funcionais (RNF)
 
-- ⚠️ **RNF01:** Usabilidade — Interface acessível para idosos e pessoas com baixo letramento digital: fontes mínimas de 16px, botões grandes (mín. 44px), linguagem simples e ícones representativos
-- ❌ **RNF02:** Desempenho — Telas devem carregar em até 2 segundos em conexão 4G; operações locais (lembretes, registros) devem funcionar offline
-- ❌ **RNF03:** Segurança — Dados de saúde armazenados com criptografia AES-256; comunicação via HTTPS/TLS 1.2+; autenticação com token JWT com expiração configurável
-- ❌ **RNF04:** Privacidade — Conformidade com a LGPD: consentimento explícito do usuário, política de privacidade acessível, opção de excluir conta e todos os dados
-- ⚠️ **RNF05:** Portabilidade — App disponível para Android (mín. versão 8.0) e iOS (mín. versão 13); responsivo para diferentes tamanhos de tela
-- ❌ **RNF06:** Confiabilidade — Disponibilidade mínima do servidor de 99,5% (downtime máximo ~44h/ano); backup automático dos dados a cada 24h
-- ⚠️ **RNF07:** Tamanho do app — Pacote de instalação inicial máximo de 50MB para facilitar download em conexões limitadas
-- ❌ **RNF15:** Refatoração de UI — Mesclar telas do aplicativo que possuem comportamentos e componentes repetitivos para otimizar a manutenção e o reuso
+- ✅ **RNF01:** Usabilidade e Acessibilidade para a Terceira Idade — Todos os arquivos `styles.ts` auditados e padronizados com fontes ampliadas, alvos de toque mínimos de `44px`–`48px` e alto contraste de cores em botões, títulos, rótulos e gráficos.
+- ⚠️ **RNF02:** Desempenho Offline-First — Operações locais via `Zustand` + `AsyncStorage` funcionam offline em segundos; sincronização em segundo plano de todas as actions com o Supabase (`db.ts`) pendente ([#24](https://github.com/bonasticos/MeuAppDeSaude/issues/24)).
+- ✅ **RNF03:** Segurança — Cliente Supabase preparado com HTTPS, RLS completo em `supabase/schema.sql` (incluindo bucket `avatars`), além de fluxos de cadastro, login, Google OAuth, recuperação de senha e sessão integrados (`#23`). *(Obs.: exclusão definitiva LGPD segue pendente na issue #26).*
+- ❌ **RNF04:** Privacidade / LGPD — Aceite explícito no cadastro e funcionalidade de exclusão definitiva da conta e dados ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)).
+- ✅ **RNF05:** Portabilidade — Aplicativo compatível com Android, iOS (Expo SDK 54) e navegador (Expo Web).
+- ❌ **RNF06:** Confiabilidade — Sincronização automática bidirecional e backup em nuvem via Supabase ([#24](https://github.com/bonasticos/MeuAppDeSaude/issues/24)).
+- ✅ **RNF07:** Tamanho do app — Dependências enxutas compatíveis com build mobile leve (`< 50 MB`), usando componentes gráficos próprios sem bibliotecas externas pesadas.
+- ⚠️ **RNF15:** Refatoração de UI — Telas de `Humor`/`Psicologia`, `SinaisVitais`/`Enfermagem` e `Perfil`/`Educação Física` consolidadas e componente reutilizável [`ClinicaCharts`](src/components/ClinicaCharts.tsx) criado; falta unificar `Fisioterapia` em abas dentro de `Corpo & Movimento` e ampliar revisão de componentes/CI ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21), [#27](https://github.com/bonasticos/MeuAppDeSaude/issues/27)).
