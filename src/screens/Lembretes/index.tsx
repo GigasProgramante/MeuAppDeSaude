@@ -18,6 +18,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { Lembrete, LembreteAcao, LembreteRemedio, Medicamento } from '../../types';
+import {
+  avaliarValidadeMedicamento,
+  calcularAlternanciaDoseNaData,
+  isLembreteConcluidoNaData,
+} from '../../services/clinicaHelpers';
+import { getHojeLocalKey } from '../../services/sync';
 import { styles } from './styles';
 import {
   NOTIFICATION_CHANNELS,
@@ -50,45 +56,6 @@ const ARMAZENAMENTO_OPCOES = [
 ];
 
 const FORMA_OPCOES = ['Comprimido', 'Cápsula', 'Gotas', 'Xarope', 'Pomada'];
-
-const normalizeNome = (valor: string) =>
-  valor
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-const avaliarValidade = (validade?: string): 'vencido' | 'proximo' | 'ok' | null => {
-  if (!validade || !validade.trim()) return null;
-  const clean = validade.trim();
-  const partes = clean.split(/[/-]/);
-  let expiryDate: Date | null = null;
-
-  if (partes.length === 2) {
-    const mes = parseInt(partes[0], 10);
-    const anoRaw = parseInt(partes[1], 10);
-    const ano = anoRaw < 100 ? 2000 + anoRaw : anoRaw;
-    if (!isNaN(mes) && !isNaN(ano) && mes >= 1 && mes <= 12) {
-      expiryDate = new Date(ano, mes, 0, 23, 59, 59);
-    }
-  } else if (partes.length === 3) {
-    const dia = parseInt(partes[0], 10);
-    const mes = parseInt(partes[1], 10);
-    const anoRaw = parseInt(partes[2], 10);
-    const ano = anoRaw < 100 ? 2000 + anoRaw : anoRaw;
-    if (!isNaN(dia) && !isNaN(mes) && !isNaN(ano) && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
-      expiryDate = new Date(ano, mes - 1, dia, 23, 59, 59);
-    }
-  }
-
-  if (!expiryDate || isNaN(expiryDate.getTime())) return null;
-
-  const hoje = new Date();
-  const diffDias = (expiryDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24);
-  if (diffDias < 0) return 'vencido';
-  if (diffDias <= 30) return 'proximo';
-  return 'ok';
-};
 
 export default function TelaLembretes({ navigation }: Props) {
   const [activeTab, setActiveTab] = useState<'lembretes' | 'farmacia'>('lembretes');
@@ -339,6 +306,8 @@ export default function TelaLembretes({ navigation }: Props) {
     limparCamposFormLembrete();
     setEditingLembreteId(item.id);
     setCategoriaSelecionada(item.tipo);
+    setPeriodicidade(item.periodicidade || 'diaria');
+    setDiasSelecionados((item.diasSemana as Weekday[]) || []);
 
     if (item.tipo === 'remedio') {
       setNomeRemedio(item.nomeRemedio);
@@ -353,12 +322,12 @@ export default function TelaLembretes({ navigation }: Props) {
     setModalVisible(true);
   };
 
-  // Salva novo lembrete OU atualiza lembrete existente (RF14)
+  // Salva novo lembrete OU atualiza lembrete existente
   const handleSalvarLembrete = async () => {
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
     if (periodicidade !== 'diaria' && diasSelecionados.length === 0) {
-      Alert.alert('Atenção', 'Selecione pelo menos um dia da semana para a repetição.');
+      mostrarAlerta('Atenção', 'Selecione pelo menos um dia da semana para a repetição.');
       return;
     }
 
@@ -473,48 +442,37 @@ export default function TelaLembretes({ navigation }: Props) {
     );
   };
 
-  // Marca como concluído e realiza baixa automática no estoque quando é remédio (RF18)
+  // Marca como concluído na data atual e evita baixa duplicada no estoque no mesmo dia
   const handleAlternarConcluido = (item: Lembrete) => {
-    const proximoStatus = !item.concluido;
-    updateLembrete(item.id, { concluido: proximoStatus });
+    const hojeKey = getHojeLocalKey();
+    const resultado = calcularAlternanciaDoseNaData(item, medicamentos, hojeKey);
 
-    if (proximoStatus && item.tipo === 'remedio') {
-      const remNorm = normalizeNome(item.nomeRemedio);
-      const ativos = medicamentos.filter((m) => !m.descontinuado);
+    updateLembrete(item.id, {
+      concluido: resultado.proximoStatus,
+      dosesTomadasPorData: resultado.dosesTomadasPorData,
+      dosesBaixadasPorData: resultado.dosesBaixadasPorData,
+    });
 
-      let medCorrespondente = ativos.find((m) => normalizeNome(m.nome) === remNorm);
-      if (!medCorrespondente && remNorm.length >= 3) {
-        medCorrespondente = ativos.find((m) => {
-          const medNorm = normalizeNome(m.nome);
-          return medNorm.includes(remNorm) || remNorm.includes(medNorm);
-        });
-      }
-
-      if (medCorrespondente) {
-        const estoqueAtual = parseInt(medCorrespondente.estoque || '0', 10);
-        const qtdValida = isNaN(estoqueAtual) ? 0 : estoqueAtual;
-
-        if (qtdValida > 0) {
-          const novoEstoque = qtdValida - 1;
-          updateMedicamento(medCorrespondente.id, { estoque: String(novoEstoque) });
-
-          if (novoEstoque <= 5) {
-            mostrarAlerta(
-              '⚠️ Estoque Baixo!',
-              `Dose de "${medCorrespondente.nome}" registrada (-1 unidade no estoque).\nRestam apenas ${novoEstoque} unidade(s) — providencie reposição!`
-            );
-          } else {
-            mostrarAlerta(
-              '💊 Dose Confirmada',
-              `1 unidade de "${medCorrespondente.nome}" descontada do estoque.\nEstoque atual: ${novoEstoque} unidade(s).`
-            );
-          }
+    if (resultado.medicamentoAtualizado) {
+      const med = resultado.medicamentoAtualizado;
+      if (med.alteracao === 'baixou') {
+        updateMedicamento(med.id, { estoque: String(med.novoEstoque) });
+        if (med.novoEstoque <= 5) {
+          mostrarAlerta(
+            'Estoque Baixo',
+            `Dose de "${med.nome}" registrada (-1 unidade no estoque).\nRestam apenas ${med.novoEstoque} unidade(s) — providencie reposição!`
+          );
         } else {
           mostrarAlerta(
-            '⚠️ Estoque Zerado!',
-            `Lembrete concluído, porém "${medCorrespondente.nome}" já está com 0 unidades em estoque.`
+            'Dose Confirmada',
+            `1 unidade de "${med.nome}" descontada do estoque.\nEstoque atual: ${med.novoEstoque} unidade(s).`
           );
         }
+      } else if (med.alteracao === 'zerado') {
+        mostrarAlerta(
+          'Estoque Zerado',
+          `Lembrete concluído, porém "${med.nome}" já está com 0 unidades em estoque.`
+        );
       }
     }
   };
@@ -720,9 +678,9 @@ export default function TelaLembretes({ navigation }: Props) {
   const handleTestNotification = async () => {
     try {
       await sendTestNotification();
-      Alert.alert('Sucesso', 'Notificação de teste disparada!');
+      mostrarAlerta('Sucesso', 'Notificação de teste disparada!');
     } catch (e) {
-      Alert.alert('Teste de notificação', `Não foi possível disparar: ${(e as Error).message}`);
+      mostrarAlerta('Teste de notificação', `Não foi possível disparar: ${(e as Error).message}`);
     }
   };
 
@@ -778,19 +736,22 @@ export default function TelaLembretes({ navigation }: Props) {
   );
 
   // --- RENDERIZADORES ---
+  const hojeKey = getHojeLocalKey();
+
   const renderItemLembrete = ({ item }: { item: Lembrete }) => {
     const isRemedio = item.tipo === 'remedio';
+    const concluidoHoje = isLembreteConcluidoNaData(item, hojeKey);
     return (
       <View
         style={[
           styles.card,
           isRemedio ? styles.remedioCard : styles.acaoCard,
-          item.concluido && styles.completedCard,
+          concluidoHoje && styles.completedCard,
         ]}
       >
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, item.concluido && styles.completedText]}>
+            <Text style={[styles.cardTitle, concluidoHoje && styles.completedText]}>
               {isRemedio ? item.nomeRemedio : obterTextoAcao(item)}
             </Text>
             <View style={[styles.cardBadge, isRemedio ? styles.remedioBadge : styles.acaoBadge]}>
@@ -800,20 +761,20 @@ export default function TelaLembretes({ navigation }: Props) {
             </View>
           </View>
 
-          <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
+          <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
             ⏰ Horário: <Text style={{ fontWeight: 'bold' }}>{item.horario}</Text>
           </Text>
-          <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
+          <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
             📅 Repetição: <Text style={{ fontWeight: 'bold' }}>{descreverPeriodicidade(item)}</Text>
           </Text>
           {isRemedio && (
-            <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
+            <Text style={[styles.cardSubtitle, concluidoHoje && styles.completedText]}>
               🔄 Frequência: {item.frequencia}
             </Text>
           )}
 
           {isRemedio && item.observacoes && (
-            <Text style={[styles.cardNotes, item.concluido && { color: '#4B5563' }]}>
+            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
               📝 Obs: {item.observacoes}
             </Text>
           )}
@@ -821,12 +782,12 @@ export default function TelaLembretes({ navigation }: Props) {
 
         <View style={styles.cardActions}>
           <TouchableOpacity
-            style={[styles.actionButton, item.concluido && styles.checkButtonActive]}
+            style={[styles.actionButton, concluidoHoje && styles.checkButtonActive]}
             onPress={() => handleAlternarConcluido(item)}
             activeOpacity={0.7}
-            accessibilityLabel={item.concluido ? 'Desmarcar lembrete' : 'Concluir lembrete'}
+            accessibilityLabel={concluidoHoje ? 'Desmarcar lembrete' : 'Concluir lembrete'}
           >
-            <Text style={{ fontSize: 18 }}>{item.concluido ? '✅' : '⬜'}</Text>
+            <Text style={{ fontSize: 18 }}>{concluidoHoje ? '✅' : '⬜'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.editButton]}
@@ -852,7 +813,7 @@ export default function TelaLembretes({ navigation }: Props) {
   const renderMedicamentoCard = ({ item }: { item: Medicamento }) => {
     const estoqueNum = parseInt(item.estoque || '0', 10);
     const isEstoqueBaixo = !isNaN(estoqueNum) && estoqueNum <= 5;
-    const statusValidade = avaliarValidade(item.validade);
+    const statusValidade = avaliarValidadeMedicamento(item.validade);
 
     return (
       <View style={[styles.medCard, isEstoqueBaixo && styles.medCardLowStock]}>

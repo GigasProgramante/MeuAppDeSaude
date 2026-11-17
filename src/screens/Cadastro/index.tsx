@@ -55,16 +55,19 @@ export default function RegisterScreen({ navigation }: Props) {
       return;
     }
 
+    const emailLimpo = emailOrCpf.trim().toLowerCase();
+    const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpo);
+    if (!emailValido) {
+      mostrarAlerta('Atenção', 'Informe um endereço de e-mail válido (ex: nome@email.com).');
+      return;
+    }
+
+    if (password.length < 6) {
+      mostrarAlerta('Atenção', 'A senha deve possuir no mínimo 6 caracteres.');
+      return;
+    }
+
     if (isSupabaseConfigured) {
-      const emailLimpo = emailOrCpf.trim();
-      if (!emailLimpo.includes('@')) {
-        mostrarAlerta('Atenção', 'Para criar uma conta conectada ao Supabase, informe um e-mail válido.');
-        return;
-      }
-      if (password.length < 6) {
-        mostrarAlerta('Atenção', 'A senha deve possuir no mínimo 6 caracteres.');
-        return;
-      }
 
       setLoading(true);
       try {
@@ -154,7 +157,7 @@ export default function RegisterScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>E-mail ou CPF *</Text>
+          <Text style={styles.label}>E-mail *</Text>
           <TextInput
             placeholderTextColor="#6B7280"
             style={styles.input}

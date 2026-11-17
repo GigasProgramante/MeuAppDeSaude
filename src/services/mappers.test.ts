@@ -108,7 +108,10 @@ describe('mapeamento bidirecional UI <-> Banco (Supabase)', () => {
     expect(dbRow.periodicidade).toBe('dias_especificos');
     expect(dbRow.dias_semana).toEqual([2, 4, 6]);
     expect(dbRow.notification_ids).toEqual(['n1', 'n2']);
-    expect(dbRow.doses_tomadas_por_data).toEqual({ '2026-11-17': true });
+    expect(dbRow.doses_tomadas_por_data).toEqual({
+      tomadas: { '2026-11-17': true },
+      baixas: {},
+    });
 
     const roundTrip = lembreteDoDb(dbRow);
     expect(roundTrip).toEqual(
@@ -122,6 +125,12 @@ describe('mapeamento bidirecional UI <-> Banco (Supabase)', () => {
         dosesTomadasPorData: { '2026-11-17': true },
       })
     );
+
+    const legacyFlat = lembreteDoDb({
+      ...dbRow,
+      doses_tomadas_por_data: { '2026-11-16': true },
+    });
+    expect(legacyFlat.dosesTomadasPorData).toEqual({ '2026-11-16': true });
   });
 
   it('mapeia sinais vitais, humor, avaliações, treinos, dor, IMC e checklist', () => {

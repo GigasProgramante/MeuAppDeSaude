@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, SafeAreaView, ScrollView, Alert, FlatList, Platform, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, SafeAreaView, ScrollView, Alert, Platform, Modal } from 'react-native';
 import { useStore } from '../../store/useStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { SinalVital } from '../../types';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import { VITALS_LIMITS, obterFaixaGlicose } from '../../services/clinicaHelpers';
 import { styles } from './styles';
 import {
   NOTIFICATION_CHANNELS,
@@ -38,185 +39,62 @@ const getHojeLocalKey = () => {
   return `${y}-${m}-${day}`;
 };
 
-interface VitalLimit {
-  min: number;
-  max: number;
-  healthyMin: number;
-  healthyMax: number;
-  unit: string;
-  label: string;
-  name: string;
-}
+const VITALS_CONFIG = VITALS_LIMITS;
 
-const VITALS_CONFIG: Record<string, VitalLimit> = {
-  bpm: {
-    min: 0,
-    max: 250,
-    healthyMin: 50,
-    healthyMax: 120,
-    unit: 'bpm',
-    label: 'Batimentos Cardíacos',
-    name: 'bpm'
-  },
-  glicose: {
-    min: 0,
-    max: 800,
-    healthyMin: 70,
-    healthyMax: 140,
-    unit: 'mg/dL',
-    label: 'Glicemia',
-    name: 'glicose'
-  },
-  pressaoSistolica: {
-    min: 60,
-    max: 280,
-    healthyMin: 110,
-    healthyMax: 120,
-    unit: 'mmHg',
-    label: 'Pressão Sistólica',
-    name: 'pressaoSistolica'
-  },
-  pressaoDiastolica: {
-    min: 30,
-    max: 200,
-    healthyMin: 60,
-    healthyMax: 90,
-    unit: 'mmHg',
-    label: 'Pressão Diastólica',
-    name: 'pressaoDiastolica'
-  },
-  oxigenacao: {
-    min: 0,
-    max: 100,
-    healthyMin: 95,
-    healthyMax: 100,
-    unit: '%',
-    label: 'Saturação de Oxigênio',
-    name: 'oxigenacao'
-  }
-};
-
-// Componente de Roda de Rolagem Vertical (Vertical Wheel Picker)
-const VerticalWheelPicker = ({ min, max, value, onChange }: {
+// Stepper numérico inline (substitui VerticalWheelPicker para evitar FlatList dentro de ScrollView)
+const NumericStepperControl = ({
+  min,
+  max,
+  value,
+  onChange,
+  defaultStart,
+}: {
   min: number;
   max: number;
   value: string;
   onChange: (val: string) => void;
+  defaultStart?: number;
 }) => {
-  const numbers = useMemo(() => {
-    const arr = [];
-    for (let i = min; i <= max; i++) {
-      arr.push(i);
-    }
-    return arr;
-  }, [min, max]);
-
-  const flatListRef = useRef<FlatList>(null);
-  const isUserScrolling = useRef(false);
-
-  // Sincroniza a roda vertical quando o valor muda externamente (ex: digitação)
-  useEffect(() => {
-    if (isUserScrolling.current) return;
-    const num = parseInt(value, 10);
-    if (!isNaN(num) && num >= min && num <= max) {
-      const index = num - min;
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToOffset({
-          offset: index * 40,
-          animated: true,
-        });
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [value, min, max]);
-
-  const handleScroll = (event: any) => {
-    const y = event.nativeEvent.contentOffset.y;
-    const index = Math.round(y / 40);
-    if (index >= 0 && index < numbers.length) {
-      const selectedValue = numbers[index].toString();
-      if (value !== selectedValue) {
-        onChange(selectedValue);
-      }
-    }
-  };
-
-  const renderItem = ({ item }: { item: number }) => {
-    const selectedNum = parseInt(value, 10);
-    const itemIndex = item - min;
-    const selectedIndex = isNaN(selectedNum) ? -999 : selectedNum - min;
-    const distance = Math.abs(itemIndex - selectedIndex);
-
-    let opacity = 0.2;
-    let scale = 0.8;
-    
-    if (distance === 0) {
-      opacity = 1;
-      scale = 1.15;
-    } else if (distance === 1) {
-      opacity = 0.5;
-      scale = 0.95;
-    } else if (distance === 2) {
-      opacity = 0.25;
-      scale = 0.85;
-    }
-
-    const isSelected = distance === 0;
-
-    return (
-      <View style={[styles.rulerItem, { opacity, transform: [{ scale }] }]}>
-        <Text style={[styles.rulerText, isSelected && styles.rulerTextSelected]}>
-          {item}
-        </Text>
-      </View>
-    );
+  const step = (delta: number) => {
+    const parsed = parseInt(value, 10);
+    const base = isNaN(parsed) ? (defaultStart ?? Math.round((min + max) / 2)) : parsed;
+    const next = Math.min(max, Math.max(min, base + delta));
+    onChange(String(next));
   };
 
   return (
-    <View style={styles.rulerWrapper}>
-      <View style={styles.pickerIndicator} pointerEvents="none" />
-      <FlatList
-        ref={flatListRef}
-        data={numbers}
-        extraData={value}
-        keyExtractor={(item) => item.toString()}
-        renderItem={renderItem}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.rulerContent}
-        snapToInterval={40}
-        decelerationRate="fast"
-        getItemLayout={(data, index) => ({
-          length: 40,
-          offset: 40 * index,
-          index,
-        })}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        onScrollBeginDrag={() => {
-          isUserScrolling.current = true;
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+      <TouchableOpacity
+        style={{
+          minWidth: 48,
+          minHeight: 44,
+          borderRadius: 10,
+          backgroundColor: '#E2E8F0',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-        onScrollEndDrag={(e) => {
-          isUserScrolling.current = false;
-          const y = e.nativeEvent.contentOffset.y;
-          const index = Math.round(y / 40);
-          flatListRef.current?.scrollToOffset({
-            offset: index * 40,
-            animated: true,
-          });
+        onPress={() => step(-1)}
+        accessibilityLabel="Diminuir valor"
+      >
+        <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F172A' }}>−</Text>
+      </TouchableOpacity>
+      <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, color: '#475569', fontWeight: '600' }}>
+        Ajuste fino ({min}–{max})
+      </Text>
+      <TouchableOpacity
+        style={{
+          minWidth: 48,
+          minHeight: 44,
+          borderRadius: 10,
+          backgroundColor: '#E2E8F0',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-        onMomentumScrollBegin={() => {
-          isUserScrolling.current = true;
-        }}
-        onMomentumScrollEnd={(e) => {
-          isUserScrolling.current = false;
-          const y = e.nativeEvent.contentOffset.y;
-          const index = Math.round(y / 40);
-          flatListRef.current?.scrollToOffset({
-            offset: index * 40,
-            animated: true,
-          });
-        }}
-      />
+        onPress={() => step(1)}
+        accessibilityLabel="Aumentar valor"
+      >
+        <Text style={{ fontSize: 20, fontWeight: '800', color: '#0F172A' }}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -343,10 +221,10 @@ export default function TelaSinaisVitais({ navigation }: Props) {
       if (!isNaN(sys) && !isNaN(dia)) {
         const alerts = [];
         if (sys < VITALS_CONFIG.pressaoSistolica.healthyMin || sys > VITALS_CONFIG.pressaoSistolica.healthyMax) {
-          alerts.push(`Sistólica em ${sys} mmHg (saudável: 110-120).`);
+          alerts.push(`Sistólica em ${sys} mmHg (saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin}-${VITALS_CONFIG.pressaoSistolica.healthyMax}).`);
         }
         if (dia < VITALS_CONFIG.pressaoDiastolica.healthyMin || dia > VITALS_CONFIG.pressaoDiastolica.healthyMax) {
-          alerts.push(`Diastólica em ${dia} mmHg (saudável: 60-90).`);
+          alerts.push(`Diastólica em ${dia} mmHg (saudável: ${VITALS_CONFIG.pressaoDiastolica.healthyMin}-${VITALS_CONFIG.pressaoDiastolica.healthyMax}).`);
         }
         const diff = sys - dia;
         if (diff < 30) {
@@ -539,11 +417,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     }
 
     if (!isNaN(glucoseVal) && glucoseTypeVal) {
-      let gMin = 70;
-      let gMax = 140;
-      if (glucoseTypeVal === 'Jejum') { gMin = 70; gMax = 99; }
-      else if (glucoseTypeVal === 'Pré-prandial') { gMin = 70; gMax = 129; }
-      else if (glucoseTypeVal === 'Pós-prandial') { gMin = 70; gMax = 140; }
+      const { min: gMin, max: gMax } = obterFaixaGlicose(glucoseTypeVal);
 
       if (glucoseVal < gMin || glucoseVal > gMax) {
         alerts.push(`🩸 Glicemia (${glucoseTypeVal}): ${glucoseVal} mg/dL (saudável: ${gMin}-${gMax})`);
@@ -688,11 +562,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
       unit: string;
       maxScale?: number;
     }[] = [
-      { id: 'bpm', label: '❤️ BPM', subtitle: 'Faixa saudável: 50 a 120 bpm', unit: '' },
-      { id: 'glicose', label: '🩸 Glicose', subtitle: 'Referência geral: 70 a 140 mg/dL', unit: '' },
-      { id: 'pressao', label: '🩺 Pressão', subtitle: 'Pressão Arterial Sistólica (mmHg)', unit: '' },
-      { id: 'oxigenacao', label: '🫁 SpO2', subtitle: 'Saturação de oxigênio (recomendado ≥ 95%)', unit: '%', maxScale: 100 },
-      { id: 'temperatura', label: '🌡️ Temp.', subtitle: 'Temperatura corporal normal: 35.0 a 37.8 °C', unit: '°', maxScale: 43 },
+      { id: 'bpm', label: '❤️ BPM', subtitle: `Faixa saudável: ${VITALS_CONFIG.bpm.healthyMin} a ${VITALS_CONFIG.bpm.healthyMax} bpm`, unit: '' },
+      { id: 'glicose', label: '🩸 Glicose', subtitle: `Referência geral: ${VITALS_CONFIG.glicose.healthyMin} a ${VITALS_CONFIG.glicose.healthyMax} mg/dL`, unit: '' },
+      { id: 'pressao', label: '🩺 Pressão', subtitle: `Pressão Sistólica saudável: ${VITALS_CONFIG.pressaoSistolica.healthyMin} a ${VITALS_CONFIG.pressaoSistolica.healthyMax} mmHg`, unit: '' },
+      { id: 'oxigenacao', label: '🫁 SpO2', subtitle: `Saturação de oxigênio (recomendado ≥ ${VITALS_CONFIG.oxigenacao.healthyMin}%)`, unit: '%', maxScale: 100 },
+      { id: 'temperatura', label: '🌡️ Temp.', subtitle: `Temperatura corporal normal: ${VITALS_CONFIG.temperatura.healthyMin.toFixed(1)} a ${VITALS_CONFIG.temperatura.healthyMax.toFixed(1)} °C`, unit: '°', maxScale: 43 },
     ];
 
     const current = metrics.find((m) => m.id === chartMetric) || metrics[0];
@@ -730,7 +604,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             label,
             value: sysVal,
             displayValue: h.pressao,
-            color: sysVal < 100 || sysVal > 130 ? '#EF4444' : '#10B981',
+            color:
+              sysVal < VITALS_CONFIG.pressaoSistolica.healthyMin ||
+              sysVal > VITALS_CONFIG.pressaoSistolica.healthyMax
+                ? '#EF4444'
+                : '#10B981',
           });
         }
       } else if (chartMetric === 'oxigenacao' && h.oxigenacao) {
@@ -810,10 +688,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               maxLength={3}
             />
             {focusedInput === 'bpm' && (
-              <VerticalWheelPicker
+              <NumericStepperControl
                 min={VITALS_CONFIG.bpm.min}
                 max={VITALS_CONFIG.bpm.max}
                 value={bpm}
+                defaultStart={75}
                 onChange={(val) => handleInputChange(val, 'bpm')}
               />
             )}
@@ -841,10 +720,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               maxLength={3}
             />
             {focusedInput === 'glicose' && (
-              <VerticalWheelPicker
+              <NumericStepperControl
                 min={VITALS_CONFIG.glicose.min}
                 max={VITALS_CONFIG.glicose.max}
                 value={glucose}
+                defaultStart={95}
                 onChange={(val) => handleInputChange(val, 'glicose')}
               />
             )}
@@ -918,18 +798,20 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               </View>
             </View>
             {focusedInput === 'pressaoSistolica' && (
-              <VerticalWheelPicker
+              <NumericStepperControl
                 min={VITALS_CONFIG.pressaoSistolica.min}
                 max={VITALS_CONFIG.pressaoSistolica.max}
                 value={pressaoSistolica}
+                defaultStart={120}
                 onChange={(val) => handleInputChange(val, 'pressaoSistolica')}
               />
             )}
             {focusedInput === 'pressaoDiastolica' && (
-              <VerticalWheelPicker
+              <NumericStepperControl
                 min={VITALS_CONFIG.pressaoDiastolica.min}
                 max={VITALS_CONFIG.pressaoDiastolica.max}
                 value={pressaoDiastolica}
+                defaultStart={80}
                 onChange={(val) => handleInputChange(val, 'pressaoDiastolica')}
               />
             )}
@@ -957,10 +839,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               maxLength={3}
             />
             {focusedInput === 'oxigenacao' && (
-              <VerticalWheelPicker
+              <NumericStepperControl
                 min={VITALS_CONFIG.oxigenacao.min}
                 max={VITALS_CONFIG.oxigenacao.max}
                 value={oxigenacao}
+                defaultStart={98}
                 onChange={(val) => handleInputChange(val, 'oxigenacao')}
               />
             )}

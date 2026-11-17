@@ -4,6 +4,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import { calcularEClassificarImc, contarTreinosSemanaCorrente } from '../../services/clinicaHelpers';
+import { formatNumeroParaUi } from '../../services/mappers';
 import { styles } from './styles';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Perfil'>;
@@ -31,9 +33,9 @@ export default function ProfileScreen({ navigation }: Props) {
 
   const [chartMode, setChartMode] = useState<'peso' | 'imc'>('peso');
 
-  const [age, setAge] = useState(perfil?.idade || '');
-  const [weight, setWeight] = useState(perfil?.peso || '');
-  const [height, setHeight] = useState(perfil?.altura || '');
+  const [age, setAge] = useState(formatNumeroParaUi(perfil?.idade));
+  const [weight, setWeight] = useState(formatNumeroParaUi(perfil?.peso));
+  const [height, setHeight] = useState(formatNumeroParaUi(perfil?.altura));
   const [gender, setGender] = useState<string | null>(perfil?.sexo || null);
   const [comorbidades, setComorbidades] = useState<string[]>(perfil?.comorbidades || []);
   const [alergias, setAlergias] = useState(perfil?.alergias || '');
@@ -52,9 +54,12 @@ export default function ProfileScreen({ navigation }: Props) {
   // Sincroniza quando o perfil hidrata do armazenamento local
   useEffect(() => {
     if (perfil && !hasEditedPerfil.current) {
-      if (perfil.idade !== undefined && perfil.idade !== '') setAge(perfil.idade);
-      if (perfil.peso !== undefined && perfil.peso !== '') setWeight(perfil.peso);
-      if (perfil.altura !== undefined && perfil.altura !== '') setHeight(perfil.altura);
+      const idadeStr = formatNumeroParaUi(perfil.idade);
+      const pesoStr = formatNumeroParaUi(perfil.peso);
+      const alturaStr = formatNumeroParaUi(perfil.altura);
+      if (idadeStr !== '') setAge(idadeStr);
+      if (pesoStr !== '') setWeight(pesoStr);
+      if (alturaStr !== '') setHeight(alturaStr);
       if (perfil.sexo !== undefined) setGender(perfil.sexo);
       if (perfil.comorbidades !== undefined) setComorbidades(perfil.comorbidades);
       if (perfil.alergias !== undefined) setAlergias(perfil.alergias);
@@ -83,24 +88,12 @@ export default function ProfileScreen({ navigation }: Props) {
     { nome: 'Flexão de Braços', desc: 'Apoie os joelhos no chão se for iniciante. Tente fazer 3 séries do máximo que conseguir.' },
   ];
 
-  // IMC Calculation logic
+  // IMC Calculation logic (faixas contínuas OMS sem lacunas)
   useEffect(() => {
-    const w = parseFloat(weight.replace(',', '.'));
-    const h = parseFloat(height.replace(',', '.')) / 100;
-
-    if (w > 0 && h > 0) {
-      const calculatedImc = w / (h * h);
-      setImc(calculatedImc);
-
-      if (calculatedImc < 18.5) {
-        setImcClassification('Abaixo do peso');
-      } else if (calculatedImc >= 18.5 && calculatedImc < 24.9) {
-        setImcClassification('Normal');
-      } else if (calculatedImc >= 25 && calculatedImc < 29.9) {
-        setImcClassification('Sobrepeso');
-      } else {
-        setImcClassification('Obesidade');
-      }
+    const resultado = calcularEClassificarImc(weight, height);
+    if (resultado) {
+      setImc(resultado.imcArredondado);
+      setImcClassification(resultado.classificacao);
     } else {
       setImc(null);
       setImcClassification('');
@@ -164,8 +157,8 @@ export default function ProfileScreen({ navigation }: Props) {
     );
   };
 
-  // Cálculo automático da Meta Diária de Água: 35ml × peso corporal (RF13)
-  const pesoNumerico = parseFloat((weight || perfil?.peso || '').replace(',', '.'));
+  // Cálculo automático da Meta Diária de Água: 35ml × peso corporal
+  const pesoNumerico = parseFloat((weight || formatNumeroParaUi(perfil?.peso)).replace(',', '.'));
   const hasValidPeso = !isNaN(pesoNumerico) && pesoNumerico > 0;
   const metaAguaMl = hasValidPeso ? Math.round(pesoNumerico * 35) : null;
   const metaAguaLitros = metaAguaMl !== null ? (metaAguaMl / 1000).toFixed(2).replace('.', ',') : null;
@@ -205,13 +198,13 @@ export default function ProfileScreen({ navigation }: Props) {
     setDuracaoMin('');
   };
 
-  const treinosNaSemana = treinos.length % 6; // Mock para barra de progresso
+  const treinosNaSemana = useMemo(() => contarTreinosSemanaCorrente(treinos), [treinos]);
   const alertaAlergiaTexto = alergias.trim() || (perfil?.alergias || '').trim();
 
   const evolutionChartData: ChartPoint[] = useMemo(() => {
     const baseRecords = [...historicoImc];
     if (baseRecords.length === 0 && perfil?.peso) {
-      const pNum = parseFloat(perfil.peso.replace(',', '.'));
+      const pNum = parseFloat(formatNumeroParaUi(perfil.peso).replace(',', '.'));
       if (!isNaN(pNum) && pNum > 0) {
         baseRecords.push({
           id: 'baseline-atual',
@@ -488,9 +481,9 @@ export default function ProfileScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Meta Semanal</Text>
-          <Text style={styles.infoText}>{treinosNaSemana} de 5 treinos realizados</Text>
+          <Text style={styles.infoText}>{treinosNaSemana} de 5 treinos realizados nesta semana</Text>
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${(treinosNaSemana / 5) * 100}%` }]} />
+            <View style={[styles.progressFill, { width: `${Math.min(100, (treinosNaSemana / 5) * 100)}%` }]} />
           </View>
         </View>
 

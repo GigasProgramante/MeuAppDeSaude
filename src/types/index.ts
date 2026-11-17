@@ -4,6 +4,8 @@ export interface LembreteBase {
   concluido: boolean;
   /** Mapa YYYY-MM-DD -> true para controlar conclusão diária sem baixa dupla no estoque. */
   dosesTomadasPorData?: Record<string, boolean>;
+  /** Mapa YYYY-MM-DD -> true indicando que já houve baixa no estoque nessa data. */
+  dosesBaixadasPorData?: Record<string, boolean>;
   horario: string; // Ex: 08:00
   notificationId?: string;
   notificationIds?: string[];

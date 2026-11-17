@@ -12,7 +12,10 @@ import {
   Treino,
 } from '../types';
 import * as db from './db';
+import { getHojeLocalKey } from './mappers';
 import { isSupabaseConfigured, supabase } from './supabase';
+
+export { getHojeLocalKey };
 
 export type SyncEntity =
   | 'perfil'
@@ -71,14 +74,6 @@ export const getContextStorageKey = (contextKey: string): string =>
 
 export const getQueueStorageKey = (userId: string): string =>
   `meu-app-saude:sync-queue:${userId}`;
-
-export const getHojeLocalKey = (): string => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
 
 export async function getSyncQueue(userId: string): Promise<SyncQueueItem[]> {
   if (!userId || userId === GUEST_CONTEXT_KEY) return [];

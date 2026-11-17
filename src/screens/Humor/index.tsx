@@ -265,103 +265,99 @@ export default function MoodScreen({ navigation }: Props) {
           })}
         </View>
 
-        {selectedMood && (
-          <View style={styles.activityContainer}>
-            <Text style={styles.sectionTitle}>O que mais influenciou isso?</Text>
-            <View style={styles.activityScroll}>
-              {ACTIVITIES.map((activity) => (
+        <View style={styles.activityContainer}>
+          <Text style={styles.sectionTitle}>O que mais influenciou hoje? (opcional)</Text>
+          <View style={styles.activityScroll}>
+            {ACTIVITIES.map((activity) => (
+              <TouchableOpacity
+                key={activity}
+                style={[
+                  styles.activityChip,
+                  selectedActivity === activity && styles.activityChipSelected
+                ]}
+                onPress={() => setSelectedActivity(selectedActivity === activity ? null : activity)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.activityChipText,
+                  selectedActivity === activity && styles.activityChipTextSelected
+                ]}>
+                  {activity}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.activityContainer}>
+          <Text style={styles.sectionTitle}>🌙 Como você dormiu? (opcional)</Text>
+          <Text style={styles.fieldLabel}>Horas de sono</Text>
+          <View style={[styles.activityScroll, styles.fieldGroup]} accessibilityRole="radiogroup" accessibilityLabel="Horas de sono">
+            {HORAS_SONO.map((horas) => {
+              const ativo = horasSono === horas;
+              return (
                 <TouchableOpacity
-                  key={activity}
-                  style={[
-                    styles.activityChip,
-                    selectedActivity === activity && styles.activityChipSelected
-                  ]}
-                  onPress={() => setSelectedActivity(activity)}
+                  key={horas}
+                  style={[styles.activityChip, ativo && styles.activityChipSelected]}
+                  onPress={() => setHorasSono(ativo ? null : horas)}
                   activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: ativo }}
                 >
-                  <Text style={[
-                    styles.activityChipText,
-                    selectedActivity === activity && styles.activityChipTextSelected
-                  ]}>
-                    {activity}
+                  <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>{horas}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.fieldLabel}>Qualidade do sono</Text>
+          <View style={styles.activityScroll} accessibilityRole="radiogroup" accessibilityLabel="Qualidade do sono">
+            {QUALIDADES_SONO.map((q) => {
+              const ativo = qualidadeSono === q.id;
+              return (
+                <TouchableOpacity
+                  key={q.id}
+                  style={[styles.activityChip, ativo && styles.activityChipSelected]}
+                  onPress={() => setQualidadeSono(ativo ? null : q.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: ativo }}
+                  accessibilityLabel={`Sono ${q.id}`}
+                >
+                  <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>
+                    {q.emoji} {q.id}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              );
+            })}
           </View>
-        )}
+        </View>
 
-        {selectedMood && (
-          <View style={styles.activityContainer}>
-            <Text style={styles.sectionTitle}>🌙 Como você dormiu?</Text>
-            <Text style={styles.fieldLabel}>Horas de sono</Text>
-            <View style={[styles.activityScroll, styles.fieldGroup]} accessibilityRole="radiogroup" accessibilityLabel="Horas de sono">
-              {HORAS_SONO.map((horas) => {
-                const ativo = horasSono === horas;
-                return (
-                  <TouchableOpacity
-                    key={horas}
-                    style={[styles.activityChip, ativo && styles.activityChipSelected]}
-                    onPress={() => setHorasSono(ativo ? null : horas)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: ativo }}
-                  >
-                    <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>{horas}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.fieldLabel}>Qualidade do sono</Text>
-            <View style={styles.activityScroll} accessibilityRole="radiogroup" accessibilityLabel="Qualidade do sono">
-              {QUALIDADES_SONO.map((q) => {
-                const ativo = qualidadeSono === q.id;
-                return (
-                  <TouchableOpacity
-                    key={q.id}
-                    style={[styles.activityChip, ativo && styles.activityChipSelected]}
-                    onPress={() => setQualidadeSono(ativo ? null : q.id)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: ativo }}
-                    accessibilityLabel={`Sono ${q.id}`}
-                  >
-                    <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>
-                      {q.emoji} {q.id}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {selectedMood && (
-          <View style={styles.activityContainer}>
-            <Text style={styles.sectionTitle}>📝 Como foi seu dia?</Text>
-            <TextInput
-              style={styles.diaryInput}
-              placeholder="Escreva livremente sobre seu dia, pensamentos ou sentimentos (opcional)"
-              placeholderTextColor="#6B7280"
-              value={anotacao}
-              onChangeText={setAnotacao}
-              multiline
-              maxLength={ANOTACAO_MAX}
-              textAlignVertical="top"
-              accessibilityLabel="Diário: como foi seu dia?"
-            />
-            <Text style={styles.diaryCounter}>{anotacao.length}/{ANOTACAO_MAX}</Text>
-          </View>
-        )}
+        <View style={styles.activityContainer}>
+          <Text style={styles.sectionTitle}>📝 Como foi seu dia? (opcional)</Text>
+          <TextInput
+            style={styles.diaryInput}
+            placeholder="Escreva livremente sobre seu dia, pensamentos ou sentimentos (opcional)"
+            placeholderTextColor="#6B7280"
+            value={anotacao}
+            onChangeText={setAnotacao}
+            multiline
+            maxLength={ANOTACAO_MAX}
+            textAlignVertical="top"
+            accessibilityLabel="Diário: como foi seu dia?"
+          />
+          <Text style={styles.diaryCounter}>{anotacao.length}/{ANOTACAO_MAX}</Text>
+        </View>
 
         <TouchableOpacity
           style={[styles.saveButton, !selectedMood && styles.saveButtonDisabled]}
           onPress={handleSave}
+          disabled={!selectedMood}
+          accessibilityState={{ disabled: !selectedMood }}
           activeOpacity={0.8}
         >
           <Text style={[styles.saveButtonText, !selectedMood && { color: '#4B5563' }]}>
-            Salvar Registro Psicológico
+            {selectedMood ? 'Salvar Registro Psicológico' : 'Selecione um humor acima para salvar'}
           </Text>
         </TouchableOpacity>
 

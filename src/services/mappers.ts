@@ -70,6 +70,13 @@ export function toIsoDate(valor?: string | Date | null): string {
   return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
+export function getHojeLocalKey(referencia: Date = new Date()): string {
+  const y = referencia.getFullYear();
+  const m = String(referencia.getMonth() + 1).padStart(2, '0');
+  const day = String(referencia.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function perfilParaDb(userId: string, perfil: Partial<PerfilUsuario>): Record<string, unknown> {
   const row: Record<string, unknown> = {
     id: userId,
@@ -126,7 +133,10 @@ export function lembreteParaDb(userId: string, lembrete: Lembrete): Record<strin
     notification_ids: lembrete.notificationIds ?? null,
     periodicidade: lembrete.periodicidade ?? 'diaria',
     dias_semana: lembrete.diasSemana ?? null,
-    doses_tomadas_por_data: lembrete.dosesTomadasPorData ?? {},
+    doses_tomadas_por_data: {
+      tomadas: lembrete.dosesTomadasPorData ?? {},
+      baixas: lembrete.dosesBaixadasPorData ?? {},
+    },
   };
 
   if (isUuidValido(lembrete.id)) {
@@ -164,10 +174,20 @@ export function lembreteParaDb(userId: string, lembrete: Lembrete): Record<strin
 
 export function lembreteDoDb(row: Record<string, unknown>): Lembrete {
   const dosesRaw = row.doses_tomadas_por_data;
-  const dosesMap =
-    dosesRaw && typeof dosesRaw === 'object' && !Array.isArray(dosesRaw)
-      ? (dosesRaw as Record<string, boolean>)
-      : undefined;
+  let dosesMap: Record<string, boolean> | undefined;
+  let baixasMap: Record<string, boolean> | undefined;
+
+  if (dosesRaw && typeof dosesRaw === 'object' && !Array.isArray(dosesRaw)) {
+    const obj = dosesRaw as Record<string, unknown>;
+    if ('tomadas' in obj && typeof obj.tomadas === 'object' && obj.tomadas !== null) {
+      dosesMap = obj.tomadas as Record<string, boolean>;
+      if ('baixas' in obj && typeof obj.baixas === 'object' && obj.baixas !== null) {
+        baixasMap = obj.baixas as Record<string, boolean>;
+      }
+    } else {
+      dosesMap = obj as Record<string, boolean>;
+    }
+  }
 
   const periodicidade: Lembrete['periodicidade'] =
     row.periodicidade === 'semanal'
@@ -189,6 +209,7 @@ export function lembreteDoDb(row: Record<string, unknown>): Lembrete {
       ? row.dias_semana.filter((d): d is number => typeof d === 'number')
       : undefined,
     dosesTomadasPorData: dosesMap,
+    dosesBaixadasPorData: baixasMap,
   };
 
   if (row.tipo === 'acao') {

@@ -210,11 +210,11 @@ export default function LoginScreen({ navigation }: Props) {
           <Text style={styles.subtitle}>Faça login para acessar seus dados de saúde.</Text>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>E-mail ou Usuário</Text>
+            <Text style={styles.label}>E-mail</Text>
             <TextInput
               placeholderTextColor="#6B7280"
               style={styles.input}
-              placeholder="Digite seu e-mail (ou admin)"
+              placeholder={__DEV__ ? 'seu@email.com (ou admin em dev)' : 'seu@email.com'}
               value={emailOrCpf}
               onChangeText={setEmailOrCpf}
               autoCapitalize="none"
