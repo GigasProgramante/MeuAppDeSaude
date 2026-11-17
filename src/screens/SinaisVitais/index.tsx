@@ -6,18 +6,11 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { SinalVital } from '../../types';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
 import { styles } from './styles';
-import * as Notifications from 'expo-notifications';
-
-// Configure notification behavior for foreground alerts
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+import {
+  NOTIFICATION_CHANNELS,
+  initializeNotifications,
+  sendImmediateNotification,
+} from '../../services/notifications';
 
 type VitalsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SinaisVitais'>;
 
@@ -275,28 +268,13 @@ export default function TelaSinaisVitais({ navigation }: Props) {
 
   const lastNotificationTime = useRef<Record<string, number>>({});
 
-  // Solicitar permissões de notificação e configurar canal no Android no mount
+  // Solicitar permissões de notificação e configurar serviço no mount
   useEffect(() => {
-    async function requestPermissions() {
-      try {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') {
-          console.log('Permissão para notificações não foi concedida.');
-        }
-
-        if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('default', {
-            name: 'default',
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF0000',
-          });
-        }
-      } catch (e) {
-        console.log('Erro ao configurar notificações:', e);
+    initializeNotifications().then((granted) => {
+      if (!granted) {
+        console.log('Permissão para notificações não foi concedida.');
       }
-    }
-    requestPermissions();
+    });
   }, []);
 
   const triggerInstantNotification = async (title: string, body: string) => {
@@ -309,14 +287,11 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     lastNotificationTime.current[key] = now;
 
     try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.MAX,
-        },
-        trigger: null,
+      await sendImmediateNotification({
+        title,
+        body,
+        channelId: NOTIFICATION_CHANNELS.ALERTAS_SAUDE,
+        highPriority: true,
       });
     } catch (err) {
       console.log('Falha ao agendar notificação instantânea:', err);
@@ -607,13 +582,10 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     if (alerts.length > 0) {
       // Dispara notificação nativa final de resumo
       try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🚨 Resumo de Sinais Vitais Fora da Faixa!",
-            body: alerts.join('\n'),
-            sound: true,
-          },
-          trigger: null,
+        await sendImmediateNotification({
+          title: "🚨 Resumo de Sinais Vitais Fora da Faixa!",
+          body: alerts.join('\n'),
+          channelId: NOTIFICATION_CHANNELS.ALERTAS_SAUDE,
         });
       } catch (err) {
         console.log('Falha ao agendar notificação:', err);

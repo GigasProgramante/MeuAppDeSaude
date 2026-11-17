@@ -4,6 +4,9 @@ export interface LembreteBase {
   concluido: boolean;
   horario: string; // Ex: 08:00
   notificationId?: string;
+  notificationIds?: string[];
+  periodicidade?: 'diaria' | 'semanal' | 'dias_especificos';
+  diasSemana?: number[];
 }
 
 export interface LembreteRemedio extends LembreteBase {

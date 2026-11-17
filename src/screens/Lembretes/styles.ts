@@ -595,4 +595,62 @@ export const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: 'bold',
   },
+  periodicityContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  periodicityButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  periodicityButtonActive: {
+    borderColor: '#007BFF',
+    backgroundColor: '#EBF5FF',
+  },
+  periodicityButtonText: {
+    fontSize: 13,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  periodicityButtonTextActive: {
+    color: '#007BFF',
+    fontWeight: 'bold',
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  weekdayButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  weekdayButtonActive: {
+    backgroundColor: '#007BFF',
+    borderColor: '#007BFF',
+  },
+  weekdayButtonText: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  weekdayButtonTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
 });
