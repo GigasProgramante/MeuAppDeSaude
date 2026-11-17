@@ -15,10 +15,10 @@
 - ✅ **RF05:** Coleta de informações médicas/comorbidades no `Perfil`: **Diabetes**, **Hipertensão**, **Problema Cardíaco** e **Nenhuma**, persistidas no `useStore`.
 - ✅ **RF06:** Registro, histórico, edição, exclusão e gráfico de evolução de BPM (batimentos por minuto) na tela `SinaisVitais`.
 - ✅ **RF07:** Registro (com tipo Jejum, Pré-prandial ou Pós-prandial), histórico, edição, exclusão e gráfico de evolução de glicose (`mg/dL`) na tela `SinaisVitais`.
-- ⚠️ **RF08:** Lembretes de medicamentos migrados para o `useStore` com cadastro, edição, alarme diário via `expo-notifications` e baixa automática no estoque (`Lembretes`); suporte avançado de periodicidades e serviço centralizado pendentes ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)).
+- ✅ **RF08:** Lembretes de medicamentos migrados para o `useStore` com cadastro, edição, periodicidades avançadas (diária, semanal e dias específicos) via serviço centralizado [`src/services/notifications.ts`](src/services/notifications.ts) e baixa automática no estoque (`Lembretes`).
 - ✅ **RF09:** Aferição diária de humor (`Feliz`, `Triste`, `Nervoso`, `Ansioso`) com fatores de influência, gráfico semanal e linha do tempo cronológica na tela `Humor`.
 - ✅ **RF10:** Registro de nível de atividade física (`Ativo (Pratico Exercícios)`, `De Vez em Quando`, `Não Pratico`) com persistência no `useStore` (`Perfil`).
-- ⚠️ **RF12:** Lembretes de ações e exercícios físicos com horário diário e edição em `Lembretes`; seleção de dias específicos da semana pendente ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)).
+- ✅ **RF12:** Lembretes de ações e exercícios físicos com suporte a agendamento diário, semanal e dias específicos da semana via [`src/services/notifications.ts`](src/services/notifications.ts) (`Lembretes`).
 - ✅ **RF13:** Card automático de **Meta Diária de Água** (`35 ml × peso corporal`) com conversão em litros e copos de `250 ml` na tela `Perfil`.
 - ✅ **RF14:** Gerenciamento completo de lembretes no `useStore` — criação, edição (com reagendamento de alarme), marcação como concluído e exclusão (`Lembretes`).
 
@@ -61,19 +61,19 @@
 > [!CAUTION]
 > ## 🧠 Psicologia (RF36–RF42)
 
-- ⚠️ **RF36:** Diário emocional — registro de humor com fatores de influência já funciona; campo de texto livre opcional (*Como foi seu dia?*) pendente ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
+- ✅ **RF36:** Diário emocional completo na tela `Humor` — registro de humor com fatores de influência e campo de texto livre opcional (*"Como foi seu dia?"*) exibido na linha do tempo (`useStore`).
 - ✅ **RF37:** **Gráfico semanal de evolução/frequência emocional** exibindo a distribuição dos registros de humor dos últimos 7 dias (`Humor`).
 - ❌ **RF38:** Modal interativo passo a passo com técnicas de regulação emocional (respiração guiada e grounding `5-4-3-2-1`) ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
 - ❌ **RF40:** Botão de destaque **SOS / Preciso de Ajuda** na tela `Humor` com modal de contatos de crise (CVV `188`, SAMU `192`, CAPS) ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)). *(Obs.: resultados críticos do PHQ-9/GAD-7 já exibem alerta imediato com orientação ao CVV 188).*
 - ✅ **RF41:** Questionários validados de triagem **PHQ-9 (depressão)** e **GAD-7 (ansiedade)** na tela `Humor`, com cálculo automático de escore, classificação orientativa de risco e persistência na linha do tempo (`useStore`).
-- ❌ **RF42:** Registro simples de sono e lembretes configuráveis de autocuidado ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
+- ✅ **RF42:** Registro simples de sono (horas dormidas e qualidade do sono `Ruim` / `Regular` / `Boa`) na tela `Humor`, exibido nos cards da linha do tempo (`useStore`).
 
 ---
 
 > [!NOTE]
 > ## 🦵 Fisioterapia (RF43–RF48)
 
-- ⚠️ **RF43:** Escala de dor EVA (`0` a `10`) e histórico de evolução já implementados (`Fisioterapia`); seleção de região corporal e tipo de dor pendentes ([#9](https://github.com/bonasticos/MeuAppDeSaude/issues/9)).
+- ✅ **RF43:** Escala de dor EVA (`0` a `10`) com seleção de **região corporal** (*Coluna Lombar, Pescoço, Joelho, Ombro, Punho*) e **tipo de dor** (*Muscular, Articular, Pontada, Queimação*) exibidos no histórico de evolução (`Fisioterapia`).
 - ❌ **RF45:** Modal de Exercícios Terapêuticos de Hoje com instruções visuais ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
 - ✅ **RF46:** **Gráfico de evolução da dor (EVA 0–10)** com classificação visual por gravidade (leve, moderada e intensa) dos últimos 7 registros na tela `Fisioterapia`.
 - ❌ **RF47:** Lembrete de sessão de fisioterapia com local, terapeuta responsável e orientações pré-sessão.

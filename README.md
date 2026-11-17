@@ -48,6 +48,9 @@ npm start
 
 # Validar tipagem TypeScript
 npx tsc --noEmit
+
+# Executar testes automatizados (Jest)
+npm test
 ```
 
 Para habilitar a persistência na nuvem, crie um projeto no painel do **Supabase** e execute o script [`supabase/schema.sql`](supabase/schema.sql) no **SQL Editor** (que também cria e configura o bucket `avatars` no Supabase Storage).
@@ -68,14 +71,16 @@ src/
 │   ├── Inicial/                # Dashboard unificado + acesso aos serviços das Clínicas-Escola da UNC
 │   ├── Perfil/                 # IMC, gráfico de Peso/IMC, comorbidades, alergias, meta de água e diário de treinos (kcal)
 │   ├── SinaisVitais/           # BPM, glicemia, PA, SpO2, temperatura, gráfico de evolução, checklist e CRUD
-│   ├── Humor/                  # Diário de humor, gráfico semanal, linha do tempo e questionários PHQ-9 / GAD-7
-│   ├── Lembretes/              # Alarmes editáveis (useStore), estoque completo, baixa automática, histórico e PDF
-│   ├── Fisioterapia/           # Registro de dor (escala EVA), gráfico de evolução e histórico
+│   ├── Humor/                  # Diário de humor, relato livre, registro de sono, gráfico semanal e PHQ-9 / GAD-7
+│   ├── Lembretes/              # Alarmes editáveis com periodicidades avançadas (useStore), estoque, baixa automática e PDF
+│   ├── Fisioterapia/           # Registro de dor EVA com região corporal e tipo de dor, gráfico e histórico
 │   ├── Configuracoes/          # Edição de perfil, avatar (Storage + galeria), recuperação de senha e logout
 │   └── SobreUNC/               # Serviços à comunidade por curso, Clínicas-Escola, agendamento e GPS
 ├── services/
 │   ├── supabase.ts             # Cliente Supabase + detecção de configuração (.env)
-│   └── db.ts                   # Funções CRUD, Realtime e upload de avatar (Supabase Storage)
+│   ├── db.ts                   # Funções CRUD, Realtime e upload de avatar (Supabase Storage)
+│   ├── notifications.ts        # Serviço centralizado de notificações locais (diária, semanal, dias específicos)
+│   └── notifications.test.ts   # Suíte Jest (30 testes) do serviço de notificações
 ├── store/
 │   └── useStore.ts             # Store global Zustand + AsyncStorage
 └── types/
@@ -104,23 +109,23 @@ supabase/
    - **Pendente:** Botão definitivo de exclusão de conta e dados LGPD ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)).
 
 5. **🧠 Saúde Mental — Psicologia & Humor (`src/screens/Humor`)**
-   - **Funciona:** Seleção de humor (Feliz, Triste, Nervoso, Ansioso) com fator de influência, **gráfico semanal de frequência de humores (`RF37`)**, **questionários validados PHQ-9 (depressão) e GAD-7 (ansiedade)** com cálculo automático de escore, faixa de risco, aviso de acolhimento CVV (`188`) em casos críticos e linha do tempo integrada com Sinais Vitais (`useStore`).
-   - **Pendente:** Botão SOS Crise + modal de respiração guiada/grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)) e campo de texto livre + registro de sono ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
+   - **Funciona:** Seleção de humor (Feliz, Triste, Nervoso, Ansioso) com fator de influência, **registro de horas e qualidade do sono (`RF42`)**, **diário em texto livre opcional (*"Como foi seu dia?"* — `RF36`)**, **gráfico semanal de frequência de humores (`RF37`)**, **questionários validados PHQ-9 (depressão) e GAD-7 (ansiedade)** com cálculo automático de escore, faixa de risco, aviso de acolhimento CVV (`188`) em casos críticos e linha do tempo integrada com Sinais Vitais (`useStore`).
+   - **Pendente:** Botão SOS Crise + modal de respiração guiada/grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
 
 6. **🩺 Sinais Vitais — Enfermagem (`src/screens/SinaisVitais`)**
-   - **Funciona:** Seletor vertical (`VerticalWheelPicker`) para BPM, Glicemia (com tipo obrigatório: Jejum, Pré-prandial ou Pós-prandial), Pressão Sistólica/Diastólica (com verificação de PA convergente/divergente) e SpO2; campo de **Temperatura Corporal (°C)** com alertas automáticos de **Febre (`> 37.8 °C`)** e **Hipotermia (`< 35.0 °C`)**; **gráfico interativo de evolução clínica** (BPM, Glicemia, Pressão, SpO2 e Temperatura); **Checklist Diário de Cuidados Básicos e Higiene** persistido por data; alertas via `expo-notifications`; e **edição e exclusão** completas dos registros salvos no `useStore`.
+   - **Funciona:** Seletor vertical (`VerticalWheelPicker`) para BPM, Glicemia (com tipo obrigatório: Jejum, Pré-prandial ou Pós-prandial), Pressão Sistólica/Diastólica (com verificação de PA convergente/divergente) e SpO2; campo de **Temperatura Corporal (°C)** com alertas automáticos de **Febre (`> 37.8 °C`)** e **Hipotermia (`< 35.0 °C`)**; **gráfico interativo de evolução clínica** (BPM, Glicemia, Pressão, SpO2 e Temperatura); **Checklist Diário de Cuidados Básicos e Higiene** persistido por data; alertas via serviço centralizado [`notifications.ts`](src/services/notifications.ts); e **edição e exclusão** completas dos registros salvos no `useStore`.
 
 7. **⏰ Lembretes & Farmácia (`src/screens/Lembretes`)**
-   - **Funciona:** Estado unificado no `useStore` com migração automática das chaves legadas (`#16`); **edição completa de lembretes** com reagendamento de alarme (`RF14`); **baixa automática de `-1` unidade no estoque** ao marcar um lembrete de remédio como tomado (`RF18`); cadastro e edição de medicamentos com **médico prescritor (`RF15`)**, **validade (`RF17`)** e **orientação de armazenamento (`RF19`)**; **alerta visual vermelho de Estoque Baixo (`<= 5`)** e de vencimento; **Histórico de Medicamentos Descontinuados (`RF20`)** com opção de reativação; alerta de interação básica (`AAS` / `Aspirina`); e exportação do estoque completo em PDF/impressão (`expo-print` + `expo-sharing` com suporte a Web).
-   - **Pendente:** Ampliação do PDF para prontuário resumo do paciente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)) e serviço centralizado de notificações com dias da semana ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)).
+   - **Funciona:** Estado unificado no `useStore` com migração automática das chaves legadas (`#16`); **serviço centralizado de notificações [`notifications.ts`](src/services/notifications.ts)** com suporte a periodicidades **diária, semanal e dias específicos da semana** (`#25`); **edição completa de lembretes** com reagendamento de alarme (`RF14`); **baixa automática de `-1` unidade no estoque** ao marcar um lembrete de remédio como tomado (`RF18`); cadastro e edição de medicamentos com **médico prescritor (`RF15`)**, **validade (`RF17`)** e **orientação de armazenamento (`RF19`)**; **alerta visual vermelho de Estoque Baixo (`<= 5`)** e de vencimento; **Histórico de Medicamentos Descontinuados (`RF20`)** com opção de reativação; alerta de interação básica (`AAS` / `Aspirina`); e exportação do estoque completo em PDF/impressão (`expo-print` + `expo-sharing` com suporte a Web).
+   - **Pendente:** Ampliação do PDF para prontuário resumo do paciente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
 
 8. **🏃 Corpo & Movimento — IMC, Perfil & Educação Física (`src/screens/Perfil`)**
    - **Funciona:** Persistência completa no `useStore` (`idade`, `peso`, `altura`, `sexo`, `imc`, **`comorbidades`**, **`alergias`**); **gráfico de evolução de Peso e IMC (`RF33`)**; destaque visual em alerta vermelho no topo do perfil quando há alergias registradas; cálculo automático da **Meta Diária de Água (`35 ml × peso`)**; frequência de atividades e meta semanal; biblioteca de exercícios em modal; e **Diário de Treinos** com **duração (min)**, **intensidade** (`Leve`, `Moderado`, `Intenso`) e **cálculo estimado de gasto calórico (`kcal`)**.
    - **Pendente:** Unificação em abas com `Fisioterapia` ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
 
 9. **🦵 Fisioterapia (`src/screens/Fisioterapia`)**
-   - **Funciona:** Registro diário do nível de dor na escala EVA (`0` a `10`), **gráfico de evolução da dor com classificação de gravidade (`RF46`)** e histórico salvo no `useStore`, já padronizados para alto contraste e acessibilidade (`RNF01`).
-   - **⚠️ Mocks / Pendentes:** Os botões "Exercícios de Hoje" e "Lembretes de Postura" ainda estão sem ação ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)), além da seleção de região corporal/tipo de dor ([#9](https://github.com/bonasticos/MeuAppDeSaude/issues/9)).
+   - **Funciona:** Registro diário do nível de dor na escala EVA (`0` a `10`) com seleção de **região corporal** (*Coluna Lombar, Pescoço, Joelho, Ombro, Punho*) e **tipo de dor** (*Muscular, Articular, Pontada, Queimação* — `RF43`), **gráfico de evolução da dor com classificação de gravidade (`RF46`)** e histórico detalhado salvo no `useStore`, padronizados para alto contraste e acessibilidade (`RNF01`).
+   - **⚠️ Mocks / Pendentes:** Os botões "Exercícios de Hoje" e "Lembretes de Postura" ainda estão sem ação ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
 
 10. **🎓 Serviços da UNC à Comunidade & Clínicas-Escola (`src/screens/SobreUNC`)**
     - **Funciona:** Apresenta os serviços prestados à população pelas **Clínicas-Escola** dos cursos de **Medicina, Fisioterapia, Odontologia, Psicologia e Enfermagem** (abertura em modal com abas de *Serviços*, *Agendamento* e *GPS & Campi*), localização e rotas por **GPS (`expo-location`)** para os campi da UNC e nota de apresentação do app como **projeto de curricularização da extensão**.
@@ -173,8 +178,8 @@ docs: atualiza README e REQUISITOS com entregas do Ciclo 3
 ## 🚧 Próximos Passos (Backlog Aberto por Fase)
 
 ### 2ª Fase (UI, Modais e Recursos Específicos)
-- [ ] **Psicologia**: Botão SOS Crise e modal de respiração guiada / grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)) + Diário de texto livre e registro de sono ([#35](https://github.com/bonasticos/MeuAppDeSaude/issues/35)).
-- [ ] **Fisioterapia**: Modais de Exercícios de Hoje e Lembretes de Postura ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)) + Seleção de região corporal e tipo de dor ([#9](https://github.com/bonasticos/MeuAppDeSaude/issues/9)).
+- [ ] **Psicologia**: Botão SOS Crise e modal de respiração guiada / grounding ([#7](https://github.com/bonasticos/MeuAppDeSaude/issues/7)).
+- [ ] **Fisioterapia**: Modais de Exercícios de Hoje e Lembretes de Postura ([#8](https://github.com/bonasticos/MeuAppDeSaude/issues/8)).
 
 ### 4ª Fase (Refatoração UI & Prontuário)
 - [ ] **Refatoração UI & PDF**: Unificação por abas de `Perfil` + `Fisioterapia` em `Corpo & Movimento` e ampliação do relatório PDF para prontuário resumido do paciente ([#21](https://github.com/bonasticos/MeuAppDeSaude/issues/21)).
@@ -182,4 +187,4 @@ docs: atualiza README e REQUISITOS com entregas do Ciclo 3
 ### 6ª Fase (Supabase Provisioning, Offline-First Sync, LGPD e DevOps)
 - [ ] **Supabase Cloud**: Provisionar o projeto no painel do Supabase, executar [`supabase/schema.sql`](supabase/schema.sql) (incluindo bucket `avatars`) e preencher `.env` ([#22](https://github.com/bonasticos/MeuAppDeSaude/issues/22)).
 - [ ] **Offline-First Sync**: Sincronizar automaticamente todas as actions do `useStore` com [`src/services/db.ts`](src/services/db.ts) ([#24](https://github.com/bonasticos/MeuAppDeSaude/issues/24)).
-- [ ] **Arquitetura, LGPD & CI**: Serviço centralizado de notificações `src/services/notifications.ts` ([#25](https://github.com/bonasticos/MeuAppDeSaude/issues/25)), aceite LGPD + exclusão definitiva de conta e dados ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)), CI de TypeScript via GitHub Actions e revisão de componentes base ([#27](https://github.com/bonasticos/MeuAppDeSaude/issues/27)).
+- [ ] **LGPD & CI**: Aceite LGPD + exclusão definitiva de conta e dados ([#26](https://github.com/bonasticos/MeuAppDeSaude/issues/26)), CI de TypeScript via GitHub Actions e revisão de componentes base ([#27](https://github.com/bonasticos/MeuAppDeSaude/issues/27)).
