@@ -11,23 +11,21 @@ import {
   ScrollView 
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { styles } from './styles';
-
-// Configuração do comportamento de notificações em primeiro plano (Foreground)
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+import {
+  NOTIFICATION_CHANNELS,
+  NotificationSchedule,
+  WEEKDAYS,
+  Weekday,
+  cancelNotifications,
+  initializeNotifications,
+  scheduleNotification,
+  sendTestNotification,
+} from '../../services/notifications';
 
 // Tipagem para Navegação
 type RemindersScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Lembretes'>;
@@ -43,6 +41,9 @@ interface LembreteBase {
   concluido: boolean;
   horario: string; // Ex: 08:00
   notificationId?: string; // ID para cancelamento posterior
+  notificationIds?: string[]; // IDs agendados no expo-notifications
+  periodicidade?: 'diaria' | 'semanal' | 'dias_especificos';
+  diasSemana?: Weekday[];
 }
 
 export interface LembreteRemedio extends LembreteBase {
@@ -102,29 +103,20 @@ export default function TelaLembretes({ navigation }: Props) {
   const [formaMed, setFormaMed] = useState('');
   const [estoqueMed, setEstoqueMed] = useState('');
 
+  // Estados para periodicidade avançada
+  const [periodicidade, setPeriodicidade] = useState<'diaria' | 'semanal' | 'dias_especificos'>('diaria');
+  const [diasSelecionados, setDiasSelecionados] = useState<Weekday[]>([]);
+
   // Inicialização
   useEffect(() => {
     carregarLembretes();
     carregarMedicamentos();
-    solicitarPermissoesNotificacao();
-  }, []);
-
-  // Permissões para notificações locais
-  const solicitarPermissoesNotificacao = async () => {
-    try {
-      const { status: statusExistente } = await Notifications.getPermissionsAsync();
-      let statusFinal = statusExistente;
-      if (statusExistente !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        statusFinal = status;
-      }
-      if (statusFinal !== 'granted') {
+    initializeNotifications().then((granted) => {
+      if (!granted) {
         Alert.alert('Aviso', 'O aplicativo não possui permissão para disparar alertas sonoros.');
       }
-    } catch (error) {
-      console.log('Erro de permissão de notificações:', error);
-    }
-  };
+    });
+  }, []);
 
   // --- CARREGAMENTO E PERSISTÊNCIA ---
   const carregarLembretes = async () => {
@@ -163,6 +155,36 @@ export default function TelaLembretes({ navigation }: Props) {
     }
   };
 
+  const montarSchedule = (horario: string): NotificationSchedule => {
+    const [hourStr, minuteStr] = horario.split(':');
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minuteStr, 10);
+
+    if (periodicidade === 'semanal') {
+      return {
+        type: 'weekly',
+        weekday: diasSelecionados[0] || 1,
+        hour,
+        minute,
+      };
+    }
+
+    if (periodicidade === 'dias_especificos') {
+      return {
+        type: 'specificDays',
+        weekdays: diasSelecionados.length > 0 ? diasSelecionados : [1, 2, 3, 4, 5, 6, 7],
+        hour,
+        minute,
+      };
+    }
+
+    return {
+      type: 'daily',
+      hour,
+      minute,
+    };
+  };
+
   // --- FUNÇÕES DE ALARMES/NOTIFICAÇÕES ---
   const agendarNotificacaoLembrete = async (
     tipo: 'remedio' | 'acao',
@@ -172,13 +194,10 @@ export default function TelaLembretes({ navigation }: Props) {
       tipoAcao?: string;
       acaoPersonalizada?: string;
       horario: string;
+      schedule: NotificationSchedule;
     }
-  ): Promise<string | undefined> => {
+  ): Promise<string[]> => {
     try {
-      const [hourStr, minuteStr] = dados.horario.split(':');
-      const hour = parseInt(hourStr, 10);
-      const minute = parseInt(minuteStr, 10);
-
       let titulo = '';
       let corpo = '';
 
@@ -196,33 +215,28 @@ export default function TelaLembretes({ navigation }: Props) {
           default: textoAcao = 'Ação de Saúde ⚡';
         }
         titulo = `⚡ Lembrete de Ação: ${textoAcao}`;
-        corpo = `Está no horário do seu lembrete diário de saúde.`;
+        corpo = `Está no horário do seu lembrete de saúde.`;
       }
 
-      const idNotificacao = await Notifications.scheduleNotificationAsync({
-        content: {
+      return await scheduleNotification(
+        {
           title: titulo,
           body: corpo,
-          sound: true,
+          channelId: NOTIFICATION_CHANNELS.LEMBRETES,
         },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: hour,
-          minute: minute,
-        },
-      });
-
-      return idNotificacao;
+        dados.schedule
+      );
     } catch (error) {
       console.log('Erro ao agendar a notificação:', error);
-      return undefined;
+      return [];
     }
   };
 
-  const cancelarNotificacaoLembrete = async (notificationId?: string) => {
-    if (!notificationId) return;
+  const cancelarNotificacaoLembrete = async (notificationId?: string, notificationIds?: string[]) => {
+    const ids = [notificationId, ...(notificationIds || [])].filter(Boolean) as string[];
+    if (ids.length === 0) return;
     try {
-      await Notifications.cancelScheduledNotificationAsync(notificationId);
+      await cancelNotifications(ids);
     } catch (error) {
       console.log('Erro ao cancelar a notificação agendada:', error);
     }
@@ -237,11 +251,18 @@ export default function TelaLembretes({ navigation }: Props) {
     setTipoAcao('agua');
     setAcaoPersonalizada('');
     setHorarioAcao('');
+    setPeriodicidade('diaria');
+    setDiasSelecionados([]);
   };
 
   // Salva novo lembrete
   const handleAdicionarLembrete = async () => {
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+    if (periodicidade !== 'diaria' && diasSelecionados.length === 0) {
+      Alert.alert('Atenção', 'Selecione pelo menos um dia da semana para a repetição.');
+      return;
+    }
 
     if (categoriaSelecionada === 'remedio') {
       if (!nomeRemedio.trim()) {
@@ -257,10 +278,12 @@ export default function TelaLembretes({ navigation }: Props) {
         return;
       }
 
-      const notifId = await agendarNotificacaoLembrete('remedio', {
+      const schedule = montarSchedule(horarioRemedio.trim());
+      const notifIds = await agendarNotificacaoLembrete('remedio', {
         nomeRemedio: nomeRemedio.trim(),
         frequencia: frequenciaRemedio.trim(),
         horario: horarioRemedio.trim(),
+        schedule,
       });
 
       const novoRemedio: LembreteRemedio = {
@@ -271,7 +294,10 @@ export default function TelaLembretes({ navigation }: Props) {
         horario: horarioRemedio.trim(),
         frequencia: frequenciaRemedio.trim(),
         observacoes: observacoesRemedio.trim() || undefined,
-        notificationId: notifId,
+        notificationId: notifIds[0],
+        notificationIds: notifIds,
+        periodicidade,
+        diasSemana: periodicidade !== 'diaria' ? diasSelecionados : undefined,
       };
 
       const listaAtualizada = [...lembretes, novoRemedio];
@@ -287,10 +313,12 @@ export default function TelaLembretes({ navigation }: Props) {
         return;
       }
 
-      const notifId = await agendarNotificacaoLembrete('acao', {
+      const schedule = montarSchedule(horarioAcao.trim());
+      const notifIds = await agendarNotificacaoLembrete('acao', {
         tipoAcao: tipoAcao,
         acaoPersonalizada: acaoPersonalizada.trim(),
         horario: horarioAcao.trim(),
+        schedule,
       });
 
       const novoAcao: LembreteAcao = {
@@ -300,7 +328,10 @@ export default function TelaLembretes({ navigation }: Props) {
         tipoAcao: tipoAcao,
         acaoPersonalizada: tipoAcao === 'outro' ? acaoPersonalizada.trim() : undefined,
         horario: horarioAcao.trim(),
-        notificationId: notifId,
+        notificationId: notifIds[0],
+        notificationIds: notifIds,
+        periodicidade,
+        diasSemana: periodicidade !== 'diaria' ? diasSelecionados : undefined,
       };
 
       const listaAtualizada = [...lembretes, novoAcao];
@@ -320,7 +351,7 @@ export default function TelaLembretes({ navigation }: Props) {
     salvarLembretes(listaAtualizada);
   };
 
-  const handleExcluirLembrete = (id: string, notificationId?: string) => {
+  const handleExcluirLembrete = (id: string, notificationId?: string, notificationIds?: string[]) => {
     Alert.alert(
       'Excluir Lembrete',
       'Deseja excluir este lembrete? O alarme associado também será cancelado.',
@@ -330,7 +361,7 @@ export default function TelaLembretes({ navigation }: Props) {
           text: 'Confirmar', 
           style: 'destructive', 
           onPress: async () => {
-            await cancelarNotificacaoLembrete(notificationId);
+            await cancelarNotificacaoLembrete(notificationId, notificationIds);
             const listaAtualizada = lembretes.filter((item) => item.id !== id);
             salvarLembretes(listaAtualizada);
           } 
@@ -446,7 +477,30 @@ export default function TelaLembretes({ navigation }: Props) {
     }
   };
 
+  const handleTestNotification = async () => {
+    try {
+      await sendTestNotification();
+      Alert.alert('Sucesso', 'Notificação de teste disparada!');
+    } catch (e) {
+      Alert.alert('Teste de notificação', `Não foi possível disparar: ${(e as Error).message}`);
+    }
+  };
+
   // --- MAPEAMENTOS E AUXILIARES ---
+  const descreverPeriodicidade = (item: LembreteApp): string => {
+    if (item.periodicidade === 'semanal') {
+      const nomeDia = WEEKDAYS.find((w) => w.value === item.diasSemana?.[0])?.label || 'Semanal';
+      return `Toda ${nomeDia}`;
+    }
+    if (item.periodicidade === 'dias_especificos' && item.diasSemana && item.diasSemana.length > 0) {
+      return item.diasSemana
+        .map((d) => WEEKDAYS.find((w) => w.value === d)?.short)
+        .filter(Boolean)
+        .join(', ');
+    }
+    return 'Todos os dias';
+  };
+
   const obterTextoAcao = (item: LembreteAcao) => {
     switch (item.tipoAcao) {
       case 'consulta': return 'Ida a consultas 🩺';
@@ -486,6 +540,9 @@ export default function TelaLembretes({ navigation }: Props) {
           <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
             ⏰ Horário: <Text style={{ fontWeight: 'bold' }}>{item.horario}</Text>
           </Text>
+          <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
+            📅 Repetição: <Text style={{ fontWeight: 'bold' }}>{descreverPeriodicidade(item)}</Text>
+          </Text>
           {isRemedio && (
             <Text style={[styles.cardSubtitle, item.concluido && styles.completedText]}>
               🔄 Frequência: {(item as LembreteRemedio).frequencia}
@@ -508,7 +565,7 @@ export default function TelaLembretes({ navigation }: Props) {
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={() => handleExcluirLembrete(item.id, item.notificationId)}
+            onPress={() => handleExcluirLembrete(item.id, item.notificationId, item.notificationIds)}
             activeOpacity={0.7}
           >
             <Text style={{ fontSize: 16 }}>❌</Text>
@@ -574,6 +631,16 @@ export default function TelaLembretes({ navigation }: Props) {
           >
             <Text style={styles.newButtonText}>+ Novo Lembrete</Text>
           </TouchableOpacity>
+
+          {__DEV__ && (
+            <TouchableOpacity 
+              style={[styles.newButton, { backgroundColor: '#6C757D', marginTop: -8 }]} 
+              activeOpacity={0.8} 
+              onPress={handleTestNotification}
+            >
+              <Text style={styles.newButtonText}>🔔 Testar Notificação Imediata (Dev)</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Lista de Alarmes */}
           <FlatList
@@ -775,6 +842,106 @@ export default function TelaLembretes({ navigation }: Props) {
                   />
                 </View>
               )}
+
+              {/* Seletor de Periodicidade Avançada (Comum para Remédio e Ação) */}
+              <View style={{ marginTop: 14, marginBottom: 8 }}>
+                <Text style={styles.label}>Repetição do Alarme *</Text>
+                <View style={styles.periodicityContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.periodicityButton,
+                      periodicidade === 'diaria' && styles.periodicityButtonActive,
+                    ]}
+                    onPress={() => {
+                      setPeriodicidade('diaria');
+                      setDiasSelecionados([]);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.periodicityButtonText,
+                        periodicidade === 'diaria' && styles.periodicityButtonTextActive,
+                      ]}
+                    >
+                      Diária
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.periodicityButton,
+                      periodicidade === 'semanal' && styles.periodicityButtonActive,
+                    ]}
+                    onPress={() => {
+                      setPeriodicidade('semanal');
+                      if (diasSelecionados.length === 0) setDiasSelecionados([2]); // Segunda-feira como padrão
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.periodicityButtonText,
+                        periodicidade === 'semanal' && styles.periodicityButtonTextActive,
+                      ]}
+                    >
+                      Semanal
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.periodicityButton,
+                      periodicidade === 'dias_especificos' && styles.periodicityButtonActive,
+                    ]}
+                    onPress={() => setPeriodicidade('dias_especificos')}
+                  >
+                    <Text
+                      style={[
+                        styles.periodicityButtonText,
+                        periodicidade === 'dias_especificos' && styles.periodicityButtonTextActive,
+                      ]}
+                    >
+                      Dias Específicos
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {periodicidade !== 'diaria' && (
+                  <View style={styles.weekdayRow}>
+                    {WEEKDAYS.map((w) => {
+                      const isSelected = diasSelecionados.includes(w.value);
+                      return (
+                        <TouchableOpacity
+                          key={w.value}
+                          style={[
+                            styles.weekdayButton,
+                            isSelected && styles.weekdayButtonActive,
+                          ]}
+                          onPress={() => {
+                            if (periodicidade === 'semanal') {
+                              setDiasSelecionados([w.value]);
+                            } else {
+                              setDiasSelecionados((prev) =>
+                                prev.includes(w.value)
+                                  ? prev.filter((d) => d !== w.value)
+                                  : [...prev, w.value].sort()
+                              );
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.weekdayButtonText,
+                              isSelected && styles.weekdayButtonTextActive,
+                            ]}
+                          >
+                            {w.short}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
             </ScrollView>
 
             <View style={styles.modalButtons}>
