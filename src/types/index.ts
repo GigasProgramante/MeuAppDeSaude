@@ -36,10 +36,16 @@ export interface SinalVital {
   data: string;
 }
 
+export type HorasSono = 'Menos de 5h' | '5 a 6h' | '7 a 8h' | 'Mais de 8h';
+export type QualidadeSono = 'Ruim' | 'Regular' | 'Boa';
+
 export interface HumorRegistro {
   id: string;
   moodId: string;
   activity?: string;
+  anotacao?: string; // Diário de texto livre "Como foi seu dia?" (RF36)
+  horasSono?: HorasSono; // Registro de sono (RF42)
+  qualidadeSono?: QualidadeSono; // Registro de sono (RF42)
   data: string;
 }
 

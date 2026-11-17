@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, Platform, TextInput } from 'react-native';
 import { useStore } from '../../store/useStore';
+import { HorasSono, QualidadeSono } from '../../types';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
@@ -33,9 +34,20 @@ const ACTIVITIES = [
   'Relacionamentos', 'Estudos', 'Lazer', 'Finanças'
 ];
 
+const HORAS_SONO: HorasSono[] = ['Menos de 5h', '5 a 6h', '7 a 8h', 'Mais de 8h'];
+const QUALIDADES_SONO: { id: QualidadeSono; emoji: string }[] = [
+  { id: 'Ruim', emoji: '😫' },
+  { id: 'Regular', emoji: '😐' },
+  { id: 'Boa', emoji: '😴' },
+];
+const ANOTACAO_MAX = 500;
+
 export default function MoodScreen({ navigation }: Props) {
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<string | null>(null);
+  const [anotacao, setAnotacao] = useState('');
+  const [horasSono, setHorasSono] = useState<HorasSono | null>(null);
+  const [qualidadeSono, setQualidadeSono] = useState<QualidadeSono | null>(null);
 
   // Estados dos Questionários PHQ-9 e GAD-7 (RF41)
   const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
@@ -62,6 +74,23 @@ export default function MoodScreen({ navigation }: Props) {
     }
   };
 
+  const salvarRegistro = (moodId: string, mensagem: string) => {
+    const textoDiario = anotacao.trim();
+    addHumor({
+      moodId,
+      activity: selectedActivity ?? undefined,
+      anotacao: textoDiario.length > 0 ? textoDiario : undefined,
+      horasSono: horasSono ?? undefined,
+      qualidadeSono: qualidadeSono ?? undefined,
+    });
+    mostrarAlerta(selectedActivity ? 'Excelente!' : 'Tudo certo!', mensagem);
+    setSelectedMood(null);
+    setSelectedActivity(null);
+    setAnotacao('');
+    setHorasSono(null);
+    setQualidadeSono(null);
+  };
+
   const handleSave = () => {
     if (!selectedMood) {
       mostrarAlerta('Ops!', 'Por favor, selecione como você está se sentindo hoje.');
@@ -69,15 +98,13 @@ export default function MoodScreen({ navigation }: Props) {
     }
 
     if (!selectedActivity) {
+      const msgSemAtividade = 'Seu humor foi registrado com sucesso. 🌟';
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const confirmar = window.confirm(
           'Faltou um detalhe\n\nSelecionar o que influenciou seu humor ajuda muito a equipe de psicologia a entender seu padrão de comportamento. Deseja salvar mesmo assim?'
         );
         if (confirmar) {
-          addHumor({ moodId: selectedMood, activity: undefined });
-          mostrarAlerta('Tudo certo!', 'Seu humor foi registrado com sucesso. 🌟');
-          setSelectedMood(null);
-          setSelectedActivity(null);
+          salvarRegistro(selectedMood, msgSemAtividade);
         }
         return;
       }
@@ -89,22 +116,14 @@ export default function MoodScreen({ navigation }: Props) {
           { text: 'Cancelar', style: 'cancel' },
           {
             text: 'Salvar sem atividade',
-            onPress: () => {
-              addHumor({ moodId: selectedMood, activity: undefined });
-              Alert.alert('Tudo certo!', 'Seu humor foi registrado com sucesso. 🌟');
-              setSelectedMood(null);
-              setSelectedActivity(null);
-            }
+            onPress: () => salvarRegistro(selectedMood, msgSemAtividade),
           }
         ]
       );
       return;
     }
 
-    addHumor({ moodId: selectedMood, activity: selectedActivity });
-    mostrarAlerta('Excelente!', 'Registro completo salvo com sucesso. Isso ajuda muito na sua análise comportamental. 🌟');
-    setSelectedMood(null);
-    setSelectedActivity(null);
+    salvarRegistro(selectedMood, 'Registro completo salvo com sucesso. Isso ajuda muito na sua análise comportamental. 🌟');
   };
 
   const iniciarQuestionario = (tipo: TipoQuestionario) => {
@@ -272,6 +291,70 @@ export default function MoodScreen({ navigation }: Props) {
           </View>
         )}
 
+        {selectedMood && (
+          <View style={styles.activityContainer}>
+            <Text style={styles.sectionTitle}>🌙 Como você dormiu?</Text>
+            <Text style={styles.fieldLabel}>Horas de sono</Text>
+            <View style={[styles.activityScroll, styles.fieldGroup]} accessibilityRole="radiogroup" accessibilityLabel="Horas de sono">
+              {HORAS_SONO.map((horas) => {
+                const ativo = horasSono === horas;
+                return (
+                  <TouchableOpacity
+                    key={horas}
+                    style={[styles.activityChip, ativo && styles.activityChipSelected]}
+                    onPress={() => setHorasSono(ativo ? null : horas)}
+                    activeOpacity={0.7}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: ativo }}
+                  >
+                    <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>{horas}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.fieldLabel}>Qualidade do sono</Text>
+            <View style={styles.activityScroll} accessibilityRole="radiogroup" accessibilityLabel="Qualidade do sono">
+              {QUALIDADES_SONO.map((q) => {
+                const ativo = qualidadeSono === q.id;
+                return (
+                  <TouchableOpacity
+                    key={q.id}
+                    style={[styles.activityChip, ativo && styles.activityChipSelected]}
+                    onPress={() => setQualidadeSono(ativo ? null : q.id)}
+                    activeOpacity={0.7}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: ativo }}
+                    accessibilityLabel={`Sono ${q.id}`}
+                  >
+                    <Text style={[styles.activityChipText, ativo && styles.activityChipTextSelected]}>
+                      {q.emoji} {q.id}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {selectedMood && (
+          <View style={styles.activityContainer}>
+            <Text style={styles.sectionTitle}>📝 Como foi seu dia?</Text>
+            <TextInput
+              style={styles.diaryInput}
+              placeholder="Escreva livremente sobre seu dia, pensamentos ou sentimentos (opcional)"
+              placeholderTextColor="#6B7280"
+              value={anotacao}
+              onChangeText={setAnotacao}
+              multiline
+              maxLength={ANOTACAO_MAX}
+              textAlignVertical="top"
+              accessibilityLabel="Diário: como foi seu dia?"
+            />
+            <Text style={styles.diaryCounter}>{anotacao.length}/{ANOTACAO_MAX}</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[styles.saveButton, !selectedMood && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -348,6 +431,14 @@ export default function MoodScreen({ navigation }: Props) {
                       </Text>
                       {h.activity ? (
                         <Text style={styles.historyActivity}>Influência: {h.activity}</Text>
+                      ) : null}
+                      {h.horasSono || h.qualidadeSono ? (
+                        <Text style={styles.historyActivity}>
+                          🌙 Sono: {[h.horasSono, h.qualidadeSono && `qualidade ${h.qualidadeSono.toLowerCase()}`].filter(Boolean).join(' · ')}
+                        </Text>
+                      ) : null}
+                      {h.anotacao ? (
+                        <Text style={styles.historyNote}>“{h.anotacao}”</Text>
                       ) : null}
                     </View>
                   </View>

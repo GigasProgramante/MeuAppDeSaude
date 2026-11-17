@@ -84,8 +84,16 @@ create table if not exists public.humor_historico (
   user_id uuid not null references auth.users(id) on delete cascade,
   "moodId" text not null,
   activity text,
+  anotacao text,
+  "horasSono" text,
+  "qualidadeSono" text,
   data timestamptz default now()
 );
+
+-- Migração para bancos já criados antes do diário livre (RF36) e registro de sono (RF42)
+alter table public.humor_historico add column if not exists anotacao text;
+alter table public.humor_historico add column if not exists "horasSono" text;
+alter table public.humor_historico add column if not exists "qualidadeSono" text;
 
 -- 7. Tabela de Avaliações Psicológicas (PHQ-9 / GAD-7)
 create table if not exists public.avaliacoes_psicologia (
