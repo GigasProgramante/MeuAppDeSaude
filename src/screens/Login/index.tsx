@@ -16,8 +16,11 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase, isSupabaseConfigured } from '../../services/supabase';
 import { salvarPerfil } from '../../services/db';
+import { getPasswordResetRedirectUrl } from '../../services/authRecovery';
+import { GUEST_CONTEXT_KEY } from '../../services/sync';
 import { useStore } from '../../store/useStore';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { styles } from './styles';
@@ -38,6 +41,7 @@ const isGoogleClientConfigured =
 export default function LoginScreen({ navigation }: Props) {
   const [emailOrCpf, setEmailOrCpf] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [recoverModalVisible, setRecoverModalVisible] = useState(false);
@@ -78,6 +82,7 @@ export default function LoginScreen({ navigation }: Props) {
           }
 
           if (data.user) {
+            await useStore.getState().switchContext(data.user.id);
             const nomeGoogle =
               (data.user.user_metadata?.full_name as string | undefined) ||
               (data.user.user_metadata?.name as string | undefined) ||
@@ -107,8 +112,9 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
-    // Modo demonstração local (admin/admin) continua funcionando para testes rápidos
-    if (emailOrCpf.trim().toLowerCase() === 'admin' && password.trim() === 'admin') {
+    // Acesso de demonstração admin/admin restrito exclusivamente a desenvolvimento (__DEV__)
+    if (__DEV__ && emailOrCpf.trim().toLowerCase() === 'admin' && password.trim() === 'admin') {
+      await useStore.getState().switchContext(GUEST_CONTEXT_KEY);
       navigation.replace('Inicial');
       return;
     }
@@ -116,8 +122,8 @@ export default function LoginScreen({ navigation }: Props) {
     if (isSupabaseConfigured) {
       setLoading(true);
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: emailOrCpf.trim(),
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: emailOrCpf.trim().toLowerCase(),
           password: password.trim(),
         });
 
@@ -126,6 +132,9 @@ export default function LoginScreen({ navigation }: Props) {
           return;
         }
 
+        if (data.user) {
+          await useStore.getState().syncWithCloud(data.user.id);
+        }
         navigation.replace('Inicial');
       } finally {
         setLoading(false);
@@ -133,7 +142,9 @@ export default function LoginScreen({ navigation }: Props) {
     } else {
       mostrarAlerta(
         'Modo Local / Demonstração',
-        'Credenciais inválidas. Use admin/admin para testar localmente, entre sem login, ou configure o Supabase no arquivo .env.'
+        __DEV__
+          ? 'Credenciais inválidas. Em desenvolvimento use admin/admin, entre sem login (Acesso Rápido), ou configure o Supabase no arquivo .env.'
+          : 'Autenticação em nuvem não configurada neste ambiente. Utilize "Entrar sem Login (Acesso Rápido)" para uso local no aparelho.'
       );
     }
   };
@@ -174,7 +185,9 @@ export default function LoginScreen({ navigation }: Props) {
 
     setSendingReset(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(emailLimpo);
+      const { error } = await supabase.auth.resetPasswordForEmail(emailLimpo, {
+        redirectTo: getPasswordResetRedirectUrl(),
+      });
       if (error) {
         mostrarAlerta('Erro', error.message);
         return;
@@ -189,7 +202,8 @@ export default function LoginScreen({ navigation }: Props) {
     }
   };
 
-  const handleGuestLogin = () => {
+  const handleGuestLogin = async () => {
+    await useStore.getState().switchContext(GUEST_CONTEXT_KEY);
     navigation.replace('Inicial');
   };
 
@@ -224,14 +238,27 @@ export default function LoginScreen({ navigation }: Props) {
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Senha</Text>
-            <TextInput
-              placeholderTextColor="#6B7280"
-              style={styles.input}
-              placeholder="Digite sua senha"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={styles.passwordRow}>
+              <TextInput
+                placeholderTextColor="#6B7280"
+                style={styles.passwordInput}
+                placeholder="Digite sua senha"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setShowPassword((prev) => !prev)}
+                accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={22}
+                  color="#374151"
+                />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={styles.forgotLinkBtn} onPress={handleOpenRecover}>
               <Text style={styles.forgotLinkText}>Esqueceu sua senha? Recuperar por e-mail</Text>
             </TouchableOpacity>
@@ -267,6 +294,9 @@ export default function LoginScreen({ navigation }: Props) {
           <TouchableOpacity style={styles.guestButton} onPress={handleGuestLogin} activeOpacity={0.8}>
             <Text style={styles.guestButtonText}>Entrar sem Login (Acesso Rápido)</Text>
           </TouchableOpacity>
+          <Text style={styles.guestNotice}>
+            No Acesso Rápido, seus dados ficam salvos apenas neste aparelho.
+          </Text>
 
           <TouchableOpacity style={styles.registerLink} onPress={() => navigation.navigate('Cadastro')}>
             <Text style={styles.registerLinkText}>
@@ -278,6 +308,10 @@ export default function LoginScreen({ navigation }: Props) {
             <Text style={styles.uncFooterText}>Projeto de Curricularização • UNC</Text>
             <Text style={styles.uncFooterLink}>Serviços das Clínicas-Escola à Comunidade →</Text>
           </TouchableOpacity>
+
+          <Text style={styles.disclaimerText}>
+            Este aplicativo é uma ferramenta de autocuidado e apoio educativo (UNC). Não substitui atendimento médico nem serviços de emergência.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
