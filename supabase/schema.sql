@@ -116,8 +116,14 @@ create table if not exists public.historico_dor (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   nivel integer not null check (nivel >= 0 and nivel <= 10),
+  regiao text,
+  tipo text,
   data timestamptz default now()
 );
+
+-- Migração para bancos já criados antes dos campos de região e tipo de dor
+alter table public.historico_dor add column if not exists regiao text;
+alter table public.historico_dor add column if not exists tipo text;
 
 -- 10. Tabela de Histórico de Peso / IMC
 create table if not exists public.historico_imc (

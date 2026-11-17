@@ -85,9 +85,15 @@ export interface Treino {
   data: string;
 }
 
+export type RegiaoDor = 'Coluna Lombar' | 'Pescoço' | 'Joelho' | 'Ombro' | 'Punho';
+export type TipoDor = 'Muscular' | 'Articular' | 'Pontada' | 'Queimação';
+
 export interface RegistroDor {
   id: string;
   nivel: number;
+  // Opcionais para manter compatibilidade com registros salvos antes destes campos.
+  regiao?: RegiaoDor;
+  tipo?: TipoDor;
   data: string;
 }
 
