@@ -23,6 +23,7 @@ import {
   calcularAlternanciaDoseNaData,
   isLembreteConcluidoNaData,
 } from '../../services/clinicaHelpers';
+import { exportarProntuarioPdf } from '../../services/prontuarioPdf';
 import { getHojeLocalKey } from '../../services/sync';
 import { styles } from './styles';
 import {
@@ -72,6 +73,11 @@ export default function TelaLembretes({ navigation }: Props) {
   const updateMedicamento = useStore((state) => state.updateMedicamento);
   const removeMedicamento = useStore((state) => state.removeMedicamento);
   const setMedicamentos = useStore((state) => state.setMedicamentos);
+  const perfil = useStore((state) => state.perfil);
+  const sinaisVitais = useStore((state) => state.sinaisVitais || []);
+  const humorHistorico = useStore((state) => state.humorHistorico || []);
+  const avaliacoesPsicologia = useStore((state) => state.avaliacoesPsicologia || []);
+  const historicoDor = useStore((state) => state.historicoDor || []);
 
   // --- ESTADOS DA ABA DE ALARMES ---
   const [filtro, setFiltro] = useState<'todos' | 'remedio' | 'acao'>('todos');
@@ -89,6 +95,9 @@ export default function TelaLembretes({ navigation }: Props) {
   const [tipoAcao, setTipoAcao] = useState<LembreteAcao['tipoAcao']>('agua');
   const [acaoPersonalizada, setAcaoPersonalizada] = useState('');
   const [horarioAcao, setHorarioAcao] = useState('');
+  const [consultaLocal, setConsultaLocal] = useState('');
+  const [consultaEspecialidade, setConsultaEspecialidade] = useState('');
+  const [consultaPreparo, setConsultaPreparo] = useState('');
 
   // --- ESTADOS DA ABA DE ESTOQUE MÉDICO (FARMÁCIA) ---
   const [medModalVisible, setMedModalVisible] = useState(false);
@@ -221,6 +230,8 @@ export default function TelaLembretes({ navigation }: Props) {
       frequencia?: string;
       tipoAcao?: string;
       acaoPersonalizada?: string;
+      consultaLocal?: string;
+      consultaEspecialidade?: string;
       horario: string;
       schedule: NotificationSchedule;
     }
@@ -231,31 +242,37 @@ export default function TelaLembretes({ navigation }: Props) {
       let corpo = '';
 
       if (tipo === 'remedio') {
-        titulo = `💊 Hora do Remédio: ${dados.nomeRemedio}`;
+        titulo = `Hora do Remédio: ${dados.nomeRemedio}`;
         corpo = `Frequência: ${dados.frequencia}`;
       } else {
         let textoAcao = '';
         switch (dados.tipoAcao) {
           case 'consulta':
-            textoAcao = 'Ida a consultas 🩺';
+            textoAcao = 'Ida a consultas';
             break;
           case 'exercicio':
-            textoAcao = 'Fazer exercícios 🏃‍♂️';
+            textoAcao = 'Fazer exercícios';
             break;
           case 'agua':
-            textoAcao = 'Beber água 💧';
+            textoAcao = 'Beber água';
             break;
           case 'pressao':
-            textoAcao = 'Medir pressão ❤️';
+            textoAcao = 'Medir pressão';
+            break;
+          case 'fisioterapia':
+            textoAcao = dados.acaoPersonalizada || 'Fisioterapia / Postura';
             break;
           case 'outro':
-            textoAcao = dados.acaoPersonalizada || 'Ação de Saúde 📝';
+            textoAcao = dados.acaoPersonalizada || 'Ação de Saúde';
             break;
           default:
-            textoAcao = 'Ação de Saúde ⚡';
+            textoAcao = 'Ação de Saúde';
         }
-        titulo = `⚡ Lembrete de Ação: ${textoAcao}`;
-        corpo = `Está no horário do seu lembrete de saúde.`;
+        titulo = `Lembrete de Ação: ${textoAcao}`;
+        corpo =
+          dados.tipoAcao === 'consulta' && (dados.consultaEspecialidade || dados.consultaLocal)
+            ? [dados.consultaEspecialidade, dados.consultaLocal].filter(Boolean).join(' · ')
+            : 'Está no horário do seu lembrete de saúde.';
       }
 
       return await scheduleNotification(
@@ -293,6 +310,9 @@ export default function TelaLembretes({ navigation }: Props) {
     setTipoAcao('agua');
     setAcaoPersonalizada('');
     setHorarioAcao('');
+    setConsultaLocal('');
+    setConsultaEspecialidade('');
+    setConsultaPreparo('');
     setPeriodicidade('diaria');
     setDiasSelecionados([]);
   };
@@ -318,6 +338,9 @@ export default function TelaLembretes({ navigation }: Props) {
       setTipoAcao(item.tipoAcao);
       setAcaoPersonalizada(item.acaoPersonalizada || '');
       setHorarioAcao(item.horario);
+      setConsultaLocal(item.consultaLocal || '');
+      setConsultaEspecialidade(item.consultaEspecialidade || '');
+      setConsultaPreparo(item.consultaPreparo || '');
     }
     setModalVisible(true);
   };
@@ -402,14 +425,34 @@ export default function TelaLembretes({ navigation }: Props) {
       const notifIds = await agendarNotificacaoLembrete('acao', {
         tipoAcao,
         acaoPersonalizada: acaoPersonalizada.trim(),
+        consultaLocal: tipoAcao === 'consulta' ? consultaLocal.trim() || undefined : undefined,
+        consultaEspecialidade:
+          tipoAcao === 'consulta' ? consultaEspecialidade.trim() || undefined : undefined,
         horario: horarioAcao.trim(),
         schedule,
       });
 
+      const camposConsulta =
+        tipoAcao === 'consulta'
+          ? {
+              consultaLocal: consultaLocal.trim() || undefined,
+              consultaEspecialidade: consultaEspecialidade.trim() || undefined,
+              consultaPreparo: consultaPreparo.trim() || undefined,
+            }
+          : {
+              consultaLocal: undefined,
+              consultaEspecialidade: undefined,
+              consultaPreparo: undefined,
+            };
+
       if (editingLembreteId) {
         updateLembrete(editingLembreteId, {
           tipoAcao,
-          acaoPersonalizada: tipoAcao === 'outro' ? acaoPersonalizada.trim() : undefined,
+          acaoPersonalizada:
+            tipoAcao === 'outro' || tipoAcao === 'fisioterapia'
+              ? acaoPersonalizada.trim() || undefined
+              : undefined,
+          ...camposConsulta,
           horario: horarioAcao.trim(),
           notificationId: notifIds[0],
           notificationIds: notifIds,
@@ -421,7 +464,11 @@ export default function TelaLembretes({ navigation }: Props) {
           tipo: 'acao',
           concluido: false,
           tipoAcao,
-          acaoPersonalizada: tipoAcao === 'outro' ? acaoPersonalizada.trim() : undefined,
+          acaoPersonalizada:
+            tipoAcao === 'outro' || tipoAcao === 'fisioterapia'
+              ? acaoPersonalizada.trim() || undefined
+              : undefined,
+          ...camposConsulta,
           horario: horarioAcao.trim(),
           notificationId: notifIds[0],
           notificationIds: notifIds,
@@ -675,6 +722,21 @@ export default function TelaLembretes({ navigation }: Props) {
     }
   };
 
+  const handleGerarProntuarioCompleto = async () => {
+    try {
+      await exportarProntuarioPdf({
+        perfil,
+        medicamentos,
+        sinaisVitais,
+        humorHistorico,
+        avaliacoesPsicologia,
+        historicoDor,
+      });
+    } catch {
+      mostrarAlerta('Erro', 'Não foi possível gerar o resumo clínico consolidado em PDF.');
+    }
+  };
+
   const handleTestNotification = async () => {
     try {
       await sendTestNotification();
@@ -702,13 +764,15 @@ export default function TelaLembretes({ navigation }: Props) {
   const obterTextoAcao = (item: LembreteAcao) => {
     switch (item.tipoAcao) {
       case 'consulta':
-        return 'Ida a consultas 🩺';
+        return 'Ida a consultas';
       case 'exercicio':
-        return 'Fazer exercícios 🏃‍♂️';
+        return 'Fazer exercícios';
       case 'agua':
-        return 'Beber água 💧';
+        return 'Beber água';
       case 'pressao':
-        return 'Medir pressão ❤️';
+        return 'Medir pressão';
+      case 'fisioterapia':
+        return item.acaoPersonalizada || 'Fisioterapia / Postura';
       case 'outro':
         return item.acaoPersonalizada || 'Outro Lembrete';
       default:
@@ -775,7 +839,29 @@ export default function TelaLembretes({ navigation }: Props) {
 
           {isRemedio && item.observacoes && (
             <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
-              📝 Obs: {item.observacoes}
+              Obs: {item.observacoes}
+            </Text>
+          )}
+          {!isRemedio && item.tipoAcao === 'consulta' && (item.consultaEspecialidade || item.consultaLocal || item.consultaPreparo) && (
+            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
+              {[
+                item.consultaEspecialidade && `Especialidade: ${item.consultaEspecialidade}`,
+                item.consultaLocal && `Local: ${item.consultaLocal}`,
+                item.consultaPreparo && `Preparo: ${item.consultaPreparo}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          )}
+          {!isRemedio && item.tipoAcao === 'fisioterapia' && (item.fisioLocal || item.fisioTerapeuta || item.fisioOrientacoes) && (
+            <Text style={[styles.cardNotes, concluidoHoje && { color: '#4B5563' }]}>
+              {[
+                item.fisioLocal && `Local: ${item.fisioLocal}`,
+                item.fisioTerapeuta && `Profissional: ${item.fisioTerapeuta}`,
+                item.fisioOrientacoes,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           )}
         </View>
@@ -970,12 +1056,19 @@ export default function TelaLembretes({ navigation }: Props) {
         <>
           <View style={styles.rowButtons}>
             <TouchableOpacity style={styles.pdfButton} activeOpacity={0.8} onPress={handleGeneratePDF}>
-              <Text style={styles.buttonText}>Gerar PDF 📄</Text>
+              <Text style={styles.buttonText}>PDF Estoque</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.addMedButton} activeOpacity={0.8} onPress={handleAbrirNovoMed}>
               <Text style={styles.buttonText}>+ Medicamento</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            style={[styles.pdfButton, { marginHorizontal: 16, marginBottom: 10, backgroundColor: '#0F766E' }]}
+            activeOpacity={0.8}
+            onPress={handleGerarProntuarioCompleto}
+          >
+            <Text style={styles.buttonText}>Gerar Prontuário Completo (PDF)</Text>
+          </TouchableOpacity>
 
           <FlatList
             data={medicamentosAtivos}
@@ -1128,17 +1221,19 @@ export default function TelaLembretes({ navigation }: Props) {
                 <View>
                   <Text style={styles.label}>Tipo de Ação *</Text>
                   <View style={styles.selectRow}>
-                    {(['consulta', 'exercicio', 'agua', 'pressao', 'outro'] as const).map((item) => {
+                    {(['consulta', 'exercicio', 'agua', 'pressao', 'fisioterapia', 'outro'] as const).map((item) => {
                       const label =
                         item === 'consulta'
-                          ? 'Ida a consultas 🩺'
+                          ? 'Ida a consultas'
                           : item === 'exercicio'
-                            ? 'Fazer exercícios 🏃‍♂️'
+                            ? 'Fazer exercícios'
                             : item === 'agua'
-                              ? 'Beber água 💧'
+                              ? 'Beber água'
                               : item === 'pressao'
-                                ? 'Medir pressão ❤️'
-                                : 'Outros 📝';
+                                ? 'Medir pressão'
+                                : item === 'fisioterapia'
+                                  ? 'Fisioterapia / Postura'
+                                  : 'Outros';
 
                       return (
                         <TouchableOpacity
@@ -1163,6 +1258,35 @@ export default function TelaLembretes({ navigation }: Props) {
                         placeholderTextColor="#6B7280"
                         value={acaoPersonalizada}
                         onChangeText={setAcaoPersonalizada}
+                      />
+                    </View>
+                  )}
+
+                  {tipoAcao === 'consulta' && (
+                    <View>
+                      <Text style={styles.label}>Especialidade (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Ex: Cardiologia, Fisioterapia"
+                        placeholderTextColor="#6B7280"
+                        value={consultaEspecialidade}
+                        onChangeText={setConsultaEspecialidade}
+                      />
+                      <Text style={styles.label}>Local da consulta (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Ex: UBS Centro ou Clínica UNC"
+                        placeholderTextColor="#6B7280"
+                        value={consultaLocal}
+                        onChangeText={setConsultaLocal}
+                      />
+                      <Text style={styles.label}>Preparo / Observações (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Ex: Levar exames recentes, jejum 8h"
+                        placeholderTextColor="#6B7280"
+                        value={consultaPreparo}
+                        onChangeText={setConsultaPreparo}
                       />
                     </View>
                   )}

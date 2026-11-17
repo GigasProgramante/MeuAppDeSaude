@@ -1,11 +1,31 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Alert, Modal, Platform, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  SafeAreaView,
+  ScrollView,
+  Alert,
+  Modal,
+  Platform,
+  TextInput,
+  Linking,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../store/useStore';
 import { HorasSono, QualidadeSono } from '../../types';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import { AppButton, AppCard, AppModal, StatusBadge, useFeedback } from '../../components/ui';
+import { colors, spacing, radii } from '../../theme/tokens';
 import { styles } from './styles';
+import {
+  CONTATOS_CRISE,
+  ETAPAS_GROUNDING_54321,
+  FASES_RESPIRACAO_478,
+  FASES_RESPIRACAO_DIAFRAGMATICA,
+} from './regulacaoEmocional';
 import {
   GAD7_PERGUNTAS,
   OPCOES_TRIAGEM,
@@ -48,6 +68,70 @@ export default function MoodScreen({ navigation }: Props) {
   const [anotacao, setAnotacao] = useState('');
   const [horasSono, setHorasSono] = useState<HorasSono | null>(null);
   const [qualidadeSono, setQualidadeSono] = useState<QualidadeSono | null>(null);
+
+  // T6: Modais de Apoio Emocional Imediato (SOS) e Regulação (Respiração 4-7-8 / Grounding 5-4-3-2-1)
+  const { showAlert } = useFeedback();
+  const [sosModalVisible, setSosModalVisible] = useState(false);
+  const [regulacaoModalVisible, setRegulacaoModalVisible] = useState(false);
+  const [abaRegulacao, setAbaRegulacao] = useState<'respiracao' | 'grounding'>('respiracao');
+  const [tecnicaResp, setTecnicaResp] = useState<'478' | 'diafragmatica'>('478');
+  const [respiracaoAtiva, setRespiracaoAtiva] = useState(false);
+  const [faseIndex, setFaseIndex] = useState(0);
+  const [segundosRestantes, setSegundosRestantes] = useState(FASES_RESPIRACAO_478[0].duracaoSegundos);
+  const [ciclosConcluidos, setCiclosConcluidos] = useState(0);
+  const [groundingMarcados, setGroundingMarcados] = useState<string[]>([]);
+
+  const fasesRespAtuais =
+    tecnicaResp === '478' ? FASES_RESPIRACAO_478 : FASES_RESPIRACAO_DIAFRAGMATICA;
+  const faseAtualResp = fasesRespAtuais[faseIndex] || fasesRespAtuais[0];
+
+  useEffect(() => {
+    if (!regulacaoModalVisible) {
+      setRespiracaoAtiva(false);
+    }
+  }, [regulacaoModalVisible]);
+
+  useEffect(() => {
+    setRespiracaoAtiva(false);
+    setFaseIndex(0);
+    setSegundosRestantes(fasesRespAtuais[0].duracaoSegundos);
+    setCiclosConcluidos(0);
+  }, [tecnicaResp, fasesRespAtuais]);
+
+  useEffect(() => {
+    if (!respiracaoAtiva || abaRegulacao !== 'respiracao') return;
+    const timer = setInterval(() => {
+      setSegundosRestantes((prev) => {
+        if (prev > 1) return prev - 1;
+        const proximoIdx = (faseIndex + 1) % fasesRespAtuais.length;
+        if (proximoIdx === 0) {
+          setCiclosConcluidos((c) => c + 1);
+        }
+        setFaseIndex(proximoIdx);
+        return fasesRespAtuais[proximoIdx].duracaoSegundos;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [respiracaoAtiva, abaRegulacao, faseIndex, fasesRespAtuais]);
+
+  const abrirLigacaoCrise = async (url: string, nome: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        showAlert('Atendimento', `Disque diretamente para ${nome} no telefone informado.`);
+      }
+    } catch {
+      showAlert('Atendimento', `Disque diretamente para ${nome} no telefone informado.`);
+    }
+  };
+
+  const toggleGrounding = (id: string) => {
+    setGroundingMarcados((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   // Estados dos Questionários PHQ-9 e GAD-7 (RF41)
   const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
@@ -227,6 +311,58 @@ export default function MoodScreen({ navigation }: Props) {
         <View style={styles.header}>
           <Text style={styles.title}>Saúde Mental (Psicologia & Humor)</Text>
           <Text style={styles.subtitle}>Acompanhe seu bem-estar psicológico e físico</Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              minWidth: 150,
+              backgroundColor: colors.semantic.dangerBg,
+              borderWidth: 1,
+              borderColor: colors.semantic.dangerBorder,
+              borderRadius: radii.md,
+              padding: spacing.md,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            onPress={() => setSosModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="call" size={20} color={colors.semantic.danger} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: '700', color: colors.semantic.danger, fontSize: 14 }}>
+                Preciso de ajuda agora
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.text.secondary }}>CVV 188 · Apoio imediato</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              minWidth: 150,
+              backgroundColor: colors.areas.psicologia.bg,
+              borderWidth: 1,
+              borderColor: colors.areas.psicologia.color,
+              borderRadius: radii.md,
+              padding: spacing.md,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            onPress={() => setRegulacaoModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="leaf" size={20} color={colors.areas.psicologia.color} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: '700', color: colors.areas.psicologia.color, fontSize: 14 }}>
+                Respiração & Grounding
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.text.secondary }}>4-7-8 · Técnica 5-4-3-2-1</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.moodGrid}>
@@ -590,11 +726,22 @@ export default function MoodScreen({ navigation }: Props) {
 
                 {quizResult.detalhes.alertaCritico && (
                   <View style={styles.crisisAlertBox}>
-                    <Text style={styles.crisisAlertTitle}>🆘 Apoio Emocional Imediato</Text>
+                    <Text style={styles.crisisAlertTitle}>Apoio Emocional Imediato</Text>
                     <Text style={styles.crisisAlertText}>
                       Você não precisa passar por isso sozinho(a). Ligue gratuitamente para o CVV pelo número 188
                       (atendimento 24h) ou procure o CAPS / pronto-atendimento mais próximo.
                     </Text>
+                    <View style={{ marginTop: 10 }}>
+                      <AppButton
+                        title="Abrir contatos de apoio (188 / 192)"
+                        variant="danger"
+                        icon="call"
+                        onPress={() => {
+                          fecharQuestionario();
+                          setSosModalVisible(true);
+                        }}
+                      />
+                    </View>
                   </View>
                 )}
 
@@ -611,6 +758,180 @@ export default function MoodScreen({ navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      <AppModal
+        visible={sosModalVisible}
+        title="Apoio Emocional Imediato"
+        subtitle="Canais gratuitos, sigilosos e disponíveis para acolhimento."
+        onClose={() => setSosModalVisible(false)}
+        footer={
+          <AppButton title="Fechar" variant="outline" onPress={() => setSosModalVisible(false)} />
+        }
+      >
+        <View style={{ gap: spacing.md }}>
+          {CONTATOS_CRISE.map((contato) => (
+            <AppCard
+              key={contato.id}
+              variant={contato.destaque ? 'alert' : 'outlined'}
+              tone={contato.destaque ? 'danger' : 'info'}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary, flex: 1 }}>
+                  {contato.nome}
+                </Text>
+                <StatusBadge
+                  label={contato.telefone}
+                  tone={contato.destaque ? 'danger' : 'info'}
+                />
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text.secondary, marginBottom: 4 }}>
+                {contato.disponibilidade}
+              </Text>
+              <Text style={{ fontSize: 14, color: colors.text.secondary, marginBottom: 10 }}>
+                {contato.descricao}
+              </Text>
+              <AppButton
+                title={`Ligar para ${contato.telefone}`}
+                variant={contato.destaque ? 'danger' : 'secondary'}
+                icon="call-outline"
+                compact
+                onPress={() => abrirLigacaoCrise(contato.telefoneDiscagem, contato.nome)}
+              />
+            </AppCard>
+          ))}
+        </View>
+      </AppModal>
+
+      <AppModal
+        visible={regulacaoModalVisible}
+        title="Regulação Emocional Guiada"
+        subtitle="Exercícios práticos para acalmar corpo e mente no momento presente."
+        onClose={() => setRegulacaoModalVisible(false)}
+        footer={
+          <AppButton title="Fechar" variant="outline" onPress={() => setRegulacaoModalVisible(false)} />
+        }
+      >
+        <View style={{ gap: spacing.md }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <AppButton
+              title="Respiração Guiada"
+              variant={abaRegulacao === 'respiracao' ? 'primary' : 'outline'}
+              compact
+              style={{ flex: 1 }}
+              onPress={() => setAbaRegulacao('respiracao')}
+            />
+            <AppButton
+              title="Grounding 5-4-3-2-1"
+              variant={abaRegulacao === 'grounding' ? 'primary' : 'outline'}
+              compact
+              style={{ flex: 1 }}
+              onPress={() => setAbaRegulacao('grounding')}
+            />
+          </View>
+
+          {abaRegulacao === 'respiracao' ? (
+            <View style={{ gap: spacing.md }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <AppButton
+                  title="Técnica 4-7-8"
+                  variant={tecnicaResp === '478' ? 'secondary' : 'ghost'}
+                  compact
+                  style={{ flex: 1 }}
+                  onPress={() => setTecnicaResp('478')}
+                />
+                <AppButton
+                  title="Diafragmática (4-2-6)"
+                  variant={tecnicaResp === 'diafragmatica' ? 'secondary' : 'ghost'}
+                  compact
+                  style={{ flex: 1 }}
+                  onPress={() => setTecnicaResp('diafragmatica')}
+                />
+              </View>
+
+              <AppCard variant="outlined" style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
+                <StatusBadge label={`Ciclos concluídos: ${ciclosConcluidos}`} tone="info" />
+                <Text style={{ fontSize: 22, fontWeight: '800', color: colors.areas.psicologia.color, marginTop: 12 }}>
+                  {faseAtualResp.label}
+                </Text>
+                <Text style={{ fontSize: 44, fontWeight: '800', color: colors.text.primary, marginVertical: 6 }}>
+                  {segundosRestantes}s
+                </Text>
+                <Text style={{ fontSize: 14, color: colors.text.secondary, textAlign: 'center' }}>
+                  {faseAtualResp.instrucao}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, width: '100%' }}>
+                  <AppButton
+                    title={respiracaoAtiva ? 'Pausar' : 'Iniciar Guia'}
+                    icon={respiracaoAtiva ? 'pause' : 'play'}
+                    variant="primary"
+                    style={{ flex: 1 }}
+                    onPress={() => setRespiracaoAtiva((prev) => !prev)}
+                  />
+                  <AppButton
+                    title="Reiniciar"
+                    icon="refresh"
+                    variant="outline"
+                    onPress={() => {
+                      setRespiracaoAtiva(false);
+                      setFaseIndex(0);
+                      setSegundosRestantes(fasesRespAtuais[0].duracaoSegundos);
+                      setCiclosConcluidos(0);
+                    }}
+                  />
+                </View>
+              </AppCard>
+            </View>
+          ) : (
+            <View style={{ gap: spacing.sm }}>
+              <Text style={{ fontSize: 14, color: colors.text.secondary }}>
+                Marque cada sentido conforme você observa o ambiente com calma ({groundingMarcados.length}/5):
+              </Text>
+              {ETAPAS_GROUNDING_54321.map((etapa) => {
+                const marcado = groundingMarcados.includes(etapa.id);
+                return (
+                  <TouchableOpacity
+                    key={etapa.id}
+                    onPress={() => toggleGrounding(etapa.id)}
+                    activeOpacity={0.8}
+                  >
+                    <AppCard
+                      variant={marcado ? 'alert' : 'outlined'}
+                      tone={marcado ? 'success' : 'info'}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Ionicons
+                          name={marcado ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={marcado ? colors.semantic.success : colors.text.muted}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text.primary }}>
+                            {etapa.titulo}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.text.secondary, marginTop: 2 }}>
+                            {etapa.descricao}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.text.muted, marginTop: 2 }}>
+                            {etapa.exemplos}
+                          </Text>
+                        </View>
+                      </View>
+                    </AppCard>
+                  </TouchableOpacity>
+                );
+              })}
+              {groundingMarcados.length > 0 && (
+                <AppButton
+                  title="Limpar marcações"
+                  variant="ghost"
+                  compact
+                  onPress={() => setGroundingMarcados([])}
+                />
+              )}
+            </View>
+          )}
+        </View>
+      </AppModal>
     </SafeAreaView>
   );
 }

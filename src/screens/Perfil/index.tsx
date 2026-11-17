@@ -4,7 +4,11 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
-import { calcularEClassificarImc, contarTreinosSemanaCorrente } from '../../services/clinicaHelpers';
+import {
+  calcularEClassificarImc,
+  contarTreinosSemanaCorrente,
+  filtrarExerciciosPorComorbidades,
+} from '../../services/clinicaHelpers';
 import { formatNumeroParaUi } from '../../services/mappers';
 import { styles } from './styles';
 
@@ -81,12 +85,10 @@ export default function ProfileScreen({ navigation }: Props) {
     'Não Pratico'
   ];
 
-  const biblioteca = [
-    { nome: 'Caminhada Rápida', desc: 'Caminhe em um ritmo acelerado por 30 minutos. Ótimo para a saúde do coração e perda de calorias.' },
-    { nome: 'Alongamento Matinal', desc: 'Estique os braços, pernas e costas logo após acordar. Melhora a flexibilidade e postura diária.' },
-    { nome: 'Agachamento Simples', desc: 'Faça 3 séries de 12 repetições. Mantenha as costas retas e o peso nos calcanhares.' },
-    { nome: 'Flexão de Braços', desc: 'Apoie os joelhos no chão se for iniciante. Tente fazer 3 séries do máximo que conseguir.' },
-  ];
+  const resultadoBiblioteca = useMemo(
+    () => filtrarExerciciosPorComorbidades(comorbidades),
+    [comorbidades]
+  );
 
   // IMC Calculation logic (faixas contínuas OMS sem lacunas)
   useEffect(() => {
@@ -587,10 +589,30 @@ export default function ProfileScreen({ navigation }: Props) {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Biblioteca de Exercícios</Text>
             <ScrollView>
-              {biblioteca.map((item, index) => (
-                <View key={index} style={styles.exerciseItem}>
-                  <Text style={styles.exerciseName}>{item.nome}</Text>
-                  <Text style={styles.exerciseDesc}>{item.desc}</Text>
+              {resultadoBiblioteca.comorbidadesAtivas.length > 0 && (
+                <View style={{ backgroundColor: '#FEF3C7', borderColor: '#F59E0B', borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                  <Text style={{ fontWeight: '700', color: '#92400E', fontSize: 13, marginBottom: 4 }}>
+                    Filtrado para: {resultadoBiblioteca.comorbidadesAtivas.join(', ')}
+                  </Text>
+                  <Text style={{ color: '#78350F', fontSize: 13 }}>
+                    {resultadoBiblioteca.avisoLiberacaoMedica}
+                  </Text>
+                </View>
+              )}
+              {resultadoBiblioteca.exercicios.map((item) => (
+                <View key={item.id} style={styles.exerciseItem}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={[styles.exerciseName, { flex: 1 }]}>{item.nome}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0B6E99' }}>
+                      Intensidade {item.intensidade}
+                    </Text>
+                  </View>
+                  <Text style={styles.exerciseDesc}>{item.descricao}</Text>
+                  {item.cuidados && (
+                    <Text style={{ fontSize: 12, color: '#B45309', marginTop: 4 }}>
+                      Cuidado: {item.cuidados}
+                    </Text>
+                  )}
                 </View>
               ))}
             </ScrollView>

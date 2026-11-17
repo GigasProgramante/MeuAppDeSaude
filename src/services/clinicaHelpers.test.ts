@@ -4,6 +4,9 @@ import {
   calcularAlternanciaDoseNaData,
   calcularEClassificarImc,
   contarTreinosSemanaCorrente,
+  filtrarExerciciosPorComorbidades,
+  formatarMascaraHora,
+  formatarMascaraMesAno,
   isLembreteConcluidoNaData,
 } from './clinicaHelpers';
 import { LembreteRemedio, Medicamento } from '../types';
@@ -121,5 +124,25 @@ describe('controle diário de lembretes e baixa única de estoque (PROB-07)', ()
     expect(VITALS_LIMITS.pressaoSistolica.healthyMax).toBe(130);
     expect(avaliarValidadeMedicamento('01/2020', new Date(2026, 10, 17))).toBe('vencido');
     expect(avaliarValidadeMedicamento('12/2030', new Date(2026, 10, 17))).toBe('ok');
+  });
+
+  it('filtra biblioteca de exercícios por comorbidades e exibe aviso médico', () => {
+    const semCond = filtrarExerciciosPorComorbidades(['Nenhuma']);
+    expect(semCond.avisoLiberacaoMedica).toBeNull();
+    expect(semCond.exercicios.some((e) => e.id === 'agachamento-simples')).toBe(true);
+
+    const cardio = filtrarExerciciosPorComorbidades(['Problema Cardíaco']);
+    expect(cardio.avisoLiberacaoMedica).toBeTruthy();
+    expect(cardio.exercicios.every((e) => e.intensidade === 'Leve')).toBe(true);
+    expect(cardio.exercicios.some((e) => e.id === 'agachamento-simples')).toBe(false);
+
+    const diab = filtrarExerciciosPorComorbidades(['Diabetes']);
+    expect(diab.exercicios.some((e) => e.id === 'caminhada-pos-refeicao')).toBe(true);
+  });
+
+  it('aplica máscaras HH:MM e MM/AAAA corretamente', () => {
+    expect(formatarMascaraHora('0830')).toBe('08:30');
+    expect(formatarMascaraHora('145')).toBe('14:5');
+    expect(formatarMascaraMesAno('122028')).toBe('12/2028');
   });
 });

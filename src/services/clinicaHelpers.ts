@@ -337,3 +337,113 @@ export function calcularAlternanciaDoseNaData(
     dosesBaixadasPorData: mapaBaixas,
   };
 }
+
+export interface ExercicioAdaptado {
+  id: string;
+  nome: string;
+  descricao: string;
+  intensidade: 'Leve' | 'Moderada';
+  indicacoes: string[];
+  cuidados?: string;
+}
+
+export const BIBLIOTECA_EXERCICIOS: ExercicioAdaptado[] = [
+  {
+    id: 'caminhada-leve',
+    nome: 'Caminhada em Ritmo Confortável',
+    descricao: '20 a 30 minutos em terreno plano, mantendo respiração fluida e conversa possível sem falta de ar.',
+    intensidade: 'Leve',
+    indicacoes: ['Hipertensão', 'Diabetes', 'Problema Cardíaco', 'Geral'],
+    cuidados: 'Aqueça 5 minutos devagar e leve água. Interrompa se sentir tontura, dor no peito ou falta de ar.',
+  },
+  {
+    id: 'alongamento-matinal',
+    nome: 'Alongamento Global e Mobilidade',
+    descricao: 'Movimentos suaves de pescoço, ombros, costas e panturrilhas por 10 a 15 minutos sem prender a respiração.',
+    intensidade: 'Leve',
+    indicacoes: ['Hipertensão', 'Diabetes', 'Problema Cardíaco', 'Geral'],
+    cuidados: 'Evite apneia (prender o ar) durante o alongamento, especialmente em hipertensão ou cardiopatia.',
+  },
+  {
+    id: 'caminhada-pos-refeicao',
+    nome: 'Caminhada Leve Pós-Refeição',
+    descricao: '15 minutos de caminhada tranquila cerca de 30 minutos após as refeições para auxiliar o controle glicêmico.',
+    intensidade: 'Leve',
+    indicacoes: ['Diabetes'],
+    cuidados: 'Verifique a glicemia antes se usar insulina e use calçado confortável para proteger os pés.',
+  },
+  {
+    id: 'sentar-levantar',
+    nome: 'Sentar e Levantar Controlado',
+    descricao: '2 séries de 8 a 10 repetições em cadeira firme, subindo sem impulso e respirando ao fazer força.',
+    intensidade: 'Leve',
+    indicacoes: ['Diabetes', 'Hipertensão', 'Problema Cardíaco', 'Geral'],
+    cuidados: 'Não prenda a respiração ao levantar (evite manobra de Valsalva).',
+  },
+  {
+    id: 'caminhada-rapida',
+    nome: 'Caminhada Moderada Ativa',
+    descricao: 'Caminhe em ritmo acelerado por 30 minutos em percurso seguro para condicionamento cardiorrespiratório.',
+    intensidade: 'Moderada',
+    indicacoes: ['Geral'],
+  },
+  {
+    id: 'agachamento-simples',
+    nome: 'Agachamento Simples + Flexão Adaptada',
+    descricao: '3 séries de 12 agachamentos livres e flexão com apoio na parede ou joelhos no chão.',
+    intensidade: 'Moderada',
+    indicacoes: ['Geral'],
+  },
+];
+
+export interface ResultadoBibliotecaExercicios {
+  exercicios: ExercicioAdaptado[];
+  comorbidadesAtivas: string[];
+  avisoLiberacaoMedica: string | null;
+}
+
+export function filtrarExerciciosPorComorbidades(
+  comorbidades?: string[] | null
+): ResultadoBibliotecaExercicios {
+  const ativas = (comorbidades || []).filter((c) => c && c !== 'Nenhuma');
+
+  if (ativas.length === 0) {
+    return {
+      exercicios: BIBLIOTECA_EXERCICIOS.filter(
+        (ex) => ex.indicacoes.includes('Geral') && ex.id !== 'sentar-levantar'
+      ),
+      comorbidadesAtivas: [],
+      avisoLiberacaoMedica: null,
+    };
+  }
+
+  const filtrados = BIBLIOTECA_EXERCICIOS.filter((ex) =>
+    ativas.some((cond) => ex.indicacoes.includes(cond))
+  );
+
+  // Condições cardiovasculares devem priorizar exercícios estritamente leves
+  const temRestricaoCardio =
+    ativas.includes('Problema Cardíaco') || ativas.includes('Hipertensão');
+  const seguros = temRestricaoCardio
+    ? filtrados.filter((ex) => ex.intensidade === 'Leve')
+    : filtrados;
+
+  return {
+    exercicios: seguros,
+    comorbidadesAtivas: ativas,
+    avisoLiberacaoMedica:
+      'Como você informou condições de saúde prévias, pratique atividades leves após liberação médica e respeitando seus limites físicos.',
+  };
+}
+
+export function formatarMascaraHora(texto: string): string {
+  const digitos = texto.replace(/\D/g, '').slice(0, 4);
+  if (digitos.length <= 2) return digitos;
+  return `${digitos.slice(0, 2)}:${digitos.slice(2)}`;
+}
+
+export function formatarMascaraMesAno(texto: string): string {
+  const digitos = texto.replace(/\D/g, '').slice(0, 6);
+  if (digitos.length <= 2) return digitos;
+  return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+}

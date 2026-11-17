@@ -1,10 +1,16 @@
 ﻿import React, { useMemo, useState } from 'react';
 import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, TextInput, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/useStore';
 import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
+import { AppButton, AppCard, AppInput, AppModal, StatusBadge, useFeedback } from '../../components/ui';
+import { NOTIFICATION_CHANNELS, scheduleNotification } from '../../services/notifications';
+import { formatarMascaraHora } from '../../services/clinicaHelpers';
+import { colors, spacing } from '../../theme/tokens';
 import { RegiaoDor, TipoDor } from '../../types';
+import { EXERCICIOS_FISIO_HOJE, PRESETS_POSTURA_FISIO, PresetPosturaLembrete } from './fisioData';
 import { styles } from './styles';
 
 type FisioterapiaNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Fisioterapia'>;
@@ -49,11 +55,100 @@ function ChipGroup<T extends string>({ label, options, selected, onSelect }: Chi
 }
 
 export default function TelaFisioterapia({ navigation }: Props) {
+  const { showAlert, showToast } = useFeedback();
   const [nivelDor, setNivelDor] = useState('');
   const [regiaoDor, setRegiaoDor] = useState<RegiaoDor | null>(null);
   const [tipoDor, setTipoDor] = useState<TipoDor | null>(null);
+  const [exerciciosModalVisible, setExerciciosModalVisible] = useState(false);
+  const [posturaModalVisible, setPosturaModalVisible] = useState(false);
+  const [exercicioAbertoId, setExercicioAbertoId] = useState<string | null>(EXERCICIOS_FISIO_HOJE[0].id);
+
+  // Agendamento de sessão ou postura
+  const [horarioFisio, setHorarioFisio] = useState('14:00');
+  const [fisioLocal, setFisioLocal] = useState('');
+  const [fisioTerapeuta, setFisioTerapeuta] = useState('');
+  const [fisioOrientacoes, setFisioOrientacoes] = useState('');
+
   const historicoDor = useStore((state) => state.historicoDor || []);
   const addRegistroDor = useStore((state) => state.addRegistroDor);
+  const addLembrete = useStore((state) => state.addLembrete);
+
+  const agendarPresetPostura = async (preset: PresetPosturaLembrete) => {
+    const [hStr, mStr] = preset.horarioSugerido.split(':');
+    const hour = parseInt(hStr, 10);
+    const minute = parseInt(mStr, 10);
+
+    let notifIds: string[] = [];
+    if (Platform.OS !== 'web') {
+      notifIds = await scheduleNotification(
+        {
+          title: `Fisioterapia & Postura: ${preset.titulo}`,
+          body: preset.orientacoes,
+          channelId: NOTIFICATION_CHANNELS.LEMBRETES,
+        },
+        { type: 'daily', hour, minute }
+      );
+    }
+
+    addLembrete({
+      tipo: 'acao',
+      concluido: false,
+      tipoAcao: 'fisioterapia',
+      acaoPersonalizada: preset.titulo,
+      horario: preset.horarioSugerido,
+      periodicidade: 'diaria',
+      fisioOrientacoes: preset.orientacoes,
+      notificationId: notifIds[0],
+      notificationIds: notifIds,
+    });
+    showToast(`Lembrete "${preset.titulo}" agendado para ${preset.horarioSugerido}.`, 'success');
+  };
+
+  const handleAgendarSessaoFisio = async () => {
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(horarioFisio.trim())) {
+      showAlert('Horário inválido', 'Informe o horário no formato HH:MM (ex.: 14:00).');
+      return;
+    }
+
+    const [hStr, mStr] = horarioFisio.trim().split(':');
+    const hour = parseInt(hStr, 10);
+    const minute = parseInt(mStr, 10);
+
+    let notifIds: string[] = [];
+    if (Platform.OS !== 'web') {
+      notifIds = await scheduleNotification(
+        {
+          title: 'Sessão de Fisioterapia',
+          body: [fisioLocal.trim() || 'Clínica / domiciliar', fisioTerapeuta.trim()]
+            .filter(Boolean)
+            .join(' · '),
+          channelId: NOTIFICATION_CHANNELS.LEMBRETES,
+        },
+        { type: 'daily', hour, minute }
+      );
+    }
+
+    addLembrete({
+      tipo: 'acao',
+      concluido: false,
+      tipoAcao: 'fisioterapia',
+      acaoPersonalizada: 'Sessão de Fisioterapia',
+      horario: horarioFisio.trim(),
+      periodicidade: 'diaria',
+      fisioLocal: fisioLocal.trim() || undefined,
+      fisioTerapeuta: fisioTerapeuta.trim() || undefined,
+      fisioOrientacoes: fisioOrientacoes.trim() || undefined,
+      notificationId: notifIds[0],
+      notificationIds: notifIds,
+    });
+
+    setFisioLocal('');
+    setFisioTerapeuta('');
+    setFisioOrientacoes('');
+    setPosturaModalVisible(false);
+    showToast(`Lembrete de fisioterapia salvo para ${horarioFisio.trim()}.`, 'success');
+  };
 
   const mostrarAlerta = (titulo: string, mensagem: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -153,11 +248,19 @@ export default function TelaFisioterapia({ navigation }: Props) {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Plano Terapêutico</Text>
-          <TouchableOpacity style={styles.secondaryButton}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setExerciciosModalVisible(true)}
+            activeOpacity={0.8}
+          >
             <Text style={styles.secondaryButtonText}>Exercícios de Hoje</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Lembretes de Postura</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setPosturaModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.secondaryButtonText}>Lembretes de Postura e Sessões</Text>
           </TouchableOpacity>
         </View>
 
@@ -165,6 +268,143 @@ export default function TelaFisioterapia({ navigation }: Props) {
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <AppModal
+        visible={exerciciosModalVisible}
+        title="Exercícios Terapêuticos de Hoje"
+        subtitle="Realize os movimentos com calma, respeitando os limites de dor."
+        onClose={() => setExerciciosModalVisible(false)}
+        footer={
+          <AppButton title="Fechar" variant="outline" onPress={() => setExerciciosModalVisible(false)} />
+        }
+      >
+        <View style={{ gap: spacing.md }}>
+          {EXERCICIOS_FISIO_HOJE.map((ex) => {
+            const aberto = exercicioAbertoId === ex.id;
+            return (
+              <AppCard key={ex.id} variant="outlined">
+                <TouchableOpacity
+                  onPress={() => setExercicioAbertoId(aberto ? null : ex.id)}
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary }}>
+                      {ex.titulo}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.text.secondary, marginTop: 2 }}>
+                      {ex.regiao} · {ex.duracao} · {ex.series}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={aberto ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.text.secondary}
+                  />
+                </TouchableOpacity>
+                {aberto && (
+                  <View style={{ marginTop: spacing.md, gap: 6 }}>
+                    <Text style={{ fontSize: 13, color: colors.text.secondary }}>
+                      <Text style={{ fontWeight: '700' }}>Objetivo: </Text>
+                      {ex.objetivo}
+                    </Text>
+                    {ex.passos.map((passo, idx) => (
+                      <Text key={idx} style={{ fontSize: 14, color: colors.text.primary, lineHeight: 20 }}>
+                        {idx + 1}. {passo}
+                      </Text>
+                    ))}
+                    <View
+                      style={{
+                        backgroundColor: colors.semantic.warningBg,
+                        borderColor: colors.semantic.warningBorder,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        padding: 8,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, color: colors.semantic.warning, fontWeight: '600' }}>
+                        Atenção: {ex.alertaSeguranca}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </AppCard>
+            );
+          })}
+        </View>
+      </AppModal>
+
+      <AppModal
+        visible={posturaModalVisible}
+        title="Postura e Sessões de Fisioterapia"
+        subtitle="Ative um lembrete rápido de postura ou agende uma sessão."
+        onClose={() => setPosturaModalVisible(false)}
+        footer={
+          <AppButton title="Fechar" variant="outline" onPress={() => setPosturaModalVisible(false)} />
+        }
+      >
+        <View style={{ gap: spacing.md }}>
+          {PRESETS_POSTURA_FISIO.map((preset) => (
+            <AppCard key={preset.id} variant="outlined">
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text.primary, flex: 1 }}>
+                  {preset.titulo}
+                </Text>
+                <StatusBadge label={preset.horarioSugerido} tone="info" />
+              </View>
+              <Text style={{ fontSize: 13, color: colors.text.secondary, marginBottom: 8 }}>
+                {preset.descricao}
+              </Text>
+              <AppButton
+                title={`Agendar todos os dias às ${preset.horarioSugerido}`}
+                variant="secondary"
+                icon="alarm-outline"
+                compact
+                onPress={() => agendarPresetPostura(preset)}
+              />
+            </AppCard>
+          ))}
+
+          <AppCard variant="elevated">
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary, marginBottom: 10 }}>
+              Agendar Sessão Personalizada
+            </Text>
+            <AppInput
+              label="Horário (HH:MM)"
+              value={horarioFisio}
+              onChangeText={(txt) => setHorarioFisio(formatarMascaraHora(txt))}
+              keyboardType="numeric"
+              placeholder="14:00"
+              maxLength={5}
+            />
+            <AppInput
+              label="Local / Clínica (opcional)"
+              value={fisioLocal}
+              onChangeText={setFisioLocal}
+              placeholder="Ex: Clínica-Escola UNC"
+            />
+            <AppInput
+              label="Fisioterapeuta (opcional)"
+              value={fisioTerapeuta}
+              onChangeText={setFisioTerapeuta}
+              placeholder="Nome do profissional ou estagiário"
+            />
+            <AppInput
+              label="Orientações / Exercícios (opcional)"
+              value={fisioOrientacoes}
+              onChangeText={setFisioOrientacoes}
+              placeholder="Ex: Levar exame, fazer compressa"
+              multiline
+            />
+            <AppButton
+              title="Salvar Lembrete de Fisioterapia"
+              variant="primary"
+              icon="calendar-outline"
+              onPress={handleAgendarSessaoFisio}
+            />
+          </AppCard>
+        </View>
+      </AppModal>
     </SafeAreaView>
   );
 }
