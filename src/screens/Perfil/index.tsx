@@ -13,6 +13,7 @@ import {
   AppModal,
   ChipSelector,
   EmptyState,
+  PresetRemindersCard,
   ScreenShell,
   SegmentedTabs,
   StatusBadge,
@@ -24,6 +25,7 @@ import {
   filtrarExerciciosPorComorbidades,
 } from '../../services/clinicaHelpers';
 import { formatNumeroParaUi } from '../../services/mappers';
+import { getHojeLocalKey } from '../../services/sync';
 import { colors, spacing } from '../../theme/tokens';
 import { FisioterapiaPainSection } from '../Fisioterapia/FisioterapiaPainSection';
 import { styles } from './styles';
@@ -90,12 +92,14 @@ export default function ProfileScreen({ navigation, route, initialTabOverride }:
     }
   }, [initialTabOverride, route?.params?.initialTab]);
 
-  const { perfil, updatePerfil } = useStore();
+  const { perfil, updatePerfil, setCoposAguaNaData } = useStore();
   const frequenciaAtividade = perfil?.frequenciaAtividade || null;
   const treinos = useStore((state) => state.treinos || []);
   const addTreino = useStore((state) => state.addTreino);
   const historicoImc = useStore((state) => state.historicoImc || []);
   const addRegistroPesoImc = useStore((state) => state.addRegistroPesoImc);
+  const hojeKey = getHojeLocalKey();
+  const coposHoje = perfil?.aguaPorData?.[hojeKey] || 0;
 
   const [chartMode, setChartMode] = useState<'peso' | 'imc'>('peso');
   const [age, setAge] = useState(formatNumeroParaUi(perfil?.idade));
@@ -443,46 +447,95 @@ export default function ProfileScreen({ navigation, route, initialTabOverride }:
             <View style={styles.sectionHeaderRow}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons name="water-outline" size={22} color={colors.brand.primary} />
-                <Text style={styles.sectionTitle}>Meta Diária de Água</Text>
+                <Text style={styles.sectionTitle}>Hidratação Diária (Copos de 250 ml)</Text>
               </View>
-              {copos250ml ? <StatusBadge label={`${copos250ml} copos (250 ml)`} tone="info" /> : null}
+              <StatusBadge
+                label={`${coposHoje}/${copos250ml ?? 8} copos hoje`}
+                tone={coposHoje >= (copos250ml ?? 8) ? 'success' : 'info'}
+              />
             </View>
 
-            {metaAguaMl !== null ? (
-              <View>
-                <Text style={styles.waterMainValue}>
-                  {metaAguaMl} ml ({metaAguaLitros} L)
-                </Text>
-                <Text style={styles.waterSubtext}>
-                  Cálculo diário recomendado: 35 ml × {pesoNumerico} kg.
-                </Text>
+            <Text style={styles.waterMainValue}>
+              {coposHoje * 250} ml bebidos hoje
+              {metaAguaMl !== null ? ` · Meta: ${metaAguaLitros} L` : ' · Meta padrão: 2,00 L'}
+            </Text>
+            <Text style={styles.waterSubtext}>
+              {metaAguaMl !== null
+                ? `Cálculo recomendado: 35 ml × ${pesoNumerico} kg (${copos250ml} copos). Toque nos copos abaixo para marcar:`
+                : 'Informe seu peso corporal acima para personalizar sua meta (padrão sugerido: 8 copos). Toque para marcar:'}
+            </Text>
 
-                <View style={styles.waterCupsRow}>
-                  {Array.from({ length: coposVisuaisCount }).map((_, idx) => (
-                    <View key={idx} style={styles.waterCupChip}>
-                      <Ionicons name="water" size={16} color={colors.brand.primary} />
-                    </View>
-                  ))}
-                  {copos250ml && copos250ml > coposVisuaisCount ? (
-                    <Text style={styles.waterExtraLabel}>+{copos250ml - coposVisuaisCount} copos</Text>
-                  ) : null}
-                </View>
+            <View style={styles.waterCupsRow}>
+              {Array.from({ length: Math.min(Math.max(copos250ml ?? 8, coposHoje), 12) }).map(
+                (_, idx) => {
+                  const numeroCopo = idx + 1;
+                  const preenchido = numeroCopo <= coposHoje;
+                  return (
+                    <TouchableOpacity
+                      key={numeroCopo}
+                      style={[
+                        styles.waterCupChip,
+                        preenchido && { backgroundColor: colors.brand.primary },
+                      ]}
+                      onPress={() => {
+                        const proximo = coposHoje === numeroCopo ? numeroCopo - 1 : numeroCopo;
+                        setCoposAguaNaData(hojeKey, proximo);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Marcar ${numeroCopo} copo(s) de água`}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={preenchido ? 'water' : 'water-outline'}
+                        size={18}
+                        color={preenchido ? colors.text.inverse : colors.brand.primary}
+                      />
+                    </TouchableOpacity>
+                  );
+                }
+              )}
+            </View>
 
-                {frequenciaAtividade === 'Ativo (Pratico Exercícios)' && (
-                  <View style={styles.waterTipBox}>
-                    <Ionicons name="information-circle-outline" size={18} color={colors.semantic.info} />
-                    <Text style={styles.waterTipText}>
-                      Por praticar exercícios regularmente, reponha líquidos extras durante e após os treinos.
-                    </Text>
-                  </View>
-                )}
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+              <AppButton
+                title="- 1 copo"
+                variant="outline"
+                compact
+                disabled={coposHoje <= 0}
+                style={{ flex: 1 }}
+                onPress={() => setCoposAguaNaData(hojeKey, coposHoje - 1)}
+              />
+              <AppButton
+                title="+ 1 copo (250 ml)"
+                icon="water-outline"
+                variant="primary"
+                compact
+                style={{ flex: 1 }}
+                onPress={() => {
+                  const novo = coposHoje + 1;
+                  setCoposAguaNaData(hojeKey, novo);
+                  if (novo === (copos250ml ?? 8)) {
+                    showToast('Meta diária de hidratação atingida!', 'success');
+                  }
+                }}
+              />
+            </View>
+
+            {frequenciaAtividade === 'Ativo (Pratico Exercícios)' && (
+              <View style={styles.waterTipBox}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.semantic.info} />
+                <Text style={styles.waterTipText}>
+                  Por praticar exercícios regularmente, reponha líquidos extras durante e após os treinos.
+                </Text>
               </View>
-            ) : (
-              <Text style={styles.waterSubtext}>
-                Informe seu peso corporal (kg) acima para calcular sua meta diária recomendada em ml e copos.
-              </Text>
             )}
           </AppCard>
+
+          <PresetRemindersCard
+            area="corpo"
+            title="Lembretes de Água e Movimento"
+            subtitle="Ative lembretes diários recomendados para manter hidratação e mobilidade."
+          />
 
           <BarChartCard
             title="Evolução de Peso & IMC"

@@ -47,7 +47,17 @@ export interface SinalVital {
   temperatura?: string;
   humor?: string;
   exercicio?: boolean;
+  contexto?: string;
   data: string;
+}
+
+export interface VacinaRegistro {
+  id: string;
+  nome: string;
+  dataAplicacao: string;
+  proximaDose?: string;
+  local?: string;
+  observacoes?: string;
 }
 
 export type HorasSono = 'Menos de 5h' | '5 a 6h' | '7 a 8h' | 'Mais de 8h';
@@ -133,5 +143,6 @@ export interface PerfilUsuario {
   imc?: number;
   comorbidades?: string[];
   alergias?: string;
+  aguaPorData?: Record<string, number>;
   termosAceitosEm?: string;
 }

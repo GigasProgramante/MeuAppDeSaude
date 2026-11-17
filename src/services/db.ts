@@ -12,6 +12,7 @@ import {
   RegistroDor,
   SinalVital,
   Treino,
+  VacinaRegistro,
 } from '../types';
 import {
   avaliacaoPsicologiaDoDb,
@@ -34,6 +35,8 @@ import {
   sinalVitalParaDb,
   treinoDoDb,
   treinoParaDb,
+  vacinaDoDb,
+  vacinaParaDb,
 } from './mappers';
 
 const handleError = (error: unknown, operation: string) => {
@@ -619,6 +622,45 @@ export const listarChecklistsCuidados = async (
   return ((data || []) as Record<string, unknown>[])
     .map((r) => checklistDoDb(r))
     .filter((item): item is ChecklistCuidadoDiario => item !== null);
+};
+
+// ==========================================
+// CARTEIRINHA DE VACINAS (tabela: vacinas)
+// ==========================================
+export const upsertVacina = async (
+  userId: string,
+  vacina: VacinaRegistro
+): Promise<string | undefined> => {
+  const payload = vacinaParaDb(userId, vacina);
+  const { data, error } = await supabase
+    .from('vacinas')
+    .upsert(payload)
+    .select('id')
+    .single();
+
+  if (error) handleError(error, 'upsertVacina');
+  return data?.id as string | undefined;
+};
+
+export const removerVacina = async (userId: string, vacinaId: string) => {
+  const { error } = await supabase
+    .from('vacinas')
+    .delete()
+    .eq('id', vacinaId)
+    .eq('user_id', userId);
+
+  if (error) handleError(error, 'removerVacina');
+};
+
+export const listarVacinas = async (userId: string): Promise<VacinaRegistro[]> => {
+  const { data, error } = await supabase
+    .from('vacinas')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) handleError(error, 'listarVacinas');
+  return ((data || []) as Record<string, unknown>[]).map(vacinaDoDb);
 };
 
 // ==========================================

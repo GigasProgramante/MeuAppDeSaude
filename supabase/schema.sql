@@ -18,10 +18,12 @@ create table if not exists public.perfis (
   imc numeric,
   comorbidades text[],
   alergias text,
+  agua_por_data jsonb default '{}'::jsonb,
   termos_aceitos_em timestamptz,
   updated_at timestamptz default now()
 );
 
+alter table public.perfis add column if not exists agua_por_data jsonb default '{}'::jsonb;
 alter table public.perfis add column if not exists termos_aceitos_em timestamptz;
 
 -- 2. Tabela de Lembretes
@@ -90,8 +92,11 @@ create table if not exists public.sinais_vitais (
   temperatura text,
   humor text,
   exercicio boolean,
+  contexto text,
   data timestamptz default now()
 );
+
+alter table public.sinais_vitais add column if not exists contexto text;
 
 -- 5. Tabela de Histórico de Humor (Psicologia)
 create table if not exists public.humor_historico (
@@ -165,6 +170,18 @@ create table if not exists public.checklist_cuidados (
   unique (user_id, data)
 );
 
+-- 11. Tabela de Carteirinha de Vacinas (Enfermagem)
+create table if not exists public.vacinas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  nome text not null,
+  data_aplicacao text not null,
+  proxima_dose text,
+  local text,
+  observacoes text,
+  created_at timestamptz default now()
+);
+
 -- ============================================================================
 -- SEGURANÇA: ROW LEVEL SECURITY (RLS) - LGPD
 -- Cada paciente autenticado só pode ler, inserir, editar ou excluir os próprios dados
@@ -179,6 +196,7 @@ alter table public.treinos enable row level security;
 alter table public.historico_dor enable row level security;
 alter table public.historico_imc enable row level security;
 alter table public.checklist_cuidados enable row level security;
+alter table public.vacinas enable row level security;
 
 drop policy if exists "Paciente gerencia proprio perfil" on public.perfis;
 create policy "Paciente gerencia proprio perfil" on public.perfis
@@ -218,6 +236,10 @@ create policy "Paciente gerencia proprio historico imc" on public.historico_imc
 
 drop policy if exists "Paciente gerencia proprio checklist cuidados" on public.checklist_cuidados;
 create policy "Paciente gerencia proprio checklist cuidados" on public.checklist_cuidados
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Paciente gerencia proprias vacinas" on public.vacinas;
+create policy "Paciente gerencia proprias vacinas" on public.vacinas
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- ============================================================================

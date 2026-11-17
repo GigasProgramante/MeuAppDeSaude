@@ -13,6 +13,7 @@ import {
   AppModal,
   ChipSelector,
   EmptyState,
+  PresetRemindersCard,
   ScreenShell,
   SegmentedTabs,
   StatusBadge,
@@ -22,6 +23,7 @@ import { useStore } from '../../store/useStore';
 import { Lembrete, LembreteAcao, LembreteRemedio, Medicamento } from '../../types';
 import {
   avaliarValidadeMedicamento,
+  calcularAdesaoSemanalLembretes,
   calcularAlternanciaDoseNaData,
   formatarMascaraHora,
   formatarMascaraMesAno,
@@ -110,8 +112,11 @@ export default function TelaLembretes({ navigation }: Props) {
   const humorHistorico = useStore((state) => state.humorHistorico || []);
   const avaliacoesPsicologia = useStore((state) => state.avaliacoesPsicologia || []);
   const historicoDor = useStore((state) => state.historicoDor || []);
+  const vacinas = useStore((state) => state.vacinas || []);
 
   const [filtro, setFiltro] = useState<'todos' | 'remedio' | 'acao'>('todos');
+  const [buscaEstoque, setBuscaEstoque] = useState('');
+  const [filtroEstoque, setFiltroEstoque] = useState<'todos' | 'baixo' | 'validade'>('todos');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingLembreteId, setEditingLembreteId] = useState<string | null>(null);
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<'remedio' | 'acao'>('remedio');
@@ -729,6 +734,7 @@ export default function TelaLembretes({ navigation }: Props) {
         humorHistorico,
         avaliacoesPsicologia,
         historicoDor,
+        vacinas,
       });
     } catch {
       showAlert('Erro', 'Não foi possível gerar o resumo clínico consolidado em PDF.');
@@ -805,6 +811,30 @@ export default function TelaLembretes({ navigation }: Props) {
     [lembretes, hojeKey]
   );
 
+  const resumoAdesao7d = useMemo(
+    () => calcularAdesaoSemanalLembretes(lembretes),
+    [lembretes]
+  );
+
+  const medicamentosAtivosFiltrados = useMemo(() => {
+    const termo = buscaEstoque.trim().toLowerCase();
+    return medicamentosAtivos.filter((med) => {
+      if (termo) {
+        const alvo = `${med.nome} ${med.dosagem} ${med.prescritor || ''}`.toLowerCase();
+        if (!alvo.includes(termo)) return false;
+      }
+      if (filtroEstoque === 'baixo') {
+        const q = parseInt(med.estoque || '0', 10);
+        return !isNaN(q) && q <= 5;
+      }
+      if (filtroEstoque === 'validade') {
+        const st = avaliarValidadeMedicamento(med.validade);
+        return st === 'vencido' || st === 'proximo';
+      }
+      return true;
+    });
+  }, [medicamentosAtivos, buscaEstoque, filtroEstoque]);
+
   const alertasEstoque = useMemo(() => {
     const baixo = medicamentosAtivos.filter((m) => {
       const q = parseInt(m.estoque || '0', 10);
@@ -833,10 +863,10 @@ export default function TelaLembretes({ navigation }: Props) {
               <View style={styles.adherenceHeader}>
                 <View style={styles.adherenceTitleRow}>
                   <Ionicons name="checkmark-done-circle-outline" size={20} color={areaAccent.color} />
-                  <Text style={styles.sectionTitle}>Adesão de Hoje</Text>
+                  <Text style={styles.sectionTitle}>Adesão de Hoje e 7 Dias</Text>
                 </View>
                 <StatusBadge
-                  label={`${concluidosHojeCount}/${lembretes.length} concluídos`}
+                  label={`${concluidosHojeCount}/${lembretes.length} hoje · ${resumoAdesao7d.percentual}% 7d`}
                   tone={concluidosHojeCount === lembretes.length ? 'success' : 'info'}
                 />
               </View>
@@ -851,6 +881,52 @@ export default function TelaLembretes({ navigation }: Props) {
                     },
                   ]}
                 />
+              </View>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginTop: spacing.md,
+                  gap: 4,
+                }}
+              >
+                {resumoAdesao7d.dias.map((dia) => {
+                  const ok = dia.total > 0 && dia.concluidos === dia.total;
+                  const parcial = dia.concluidos > 0 && dia.concluidos < dia.total;
+                  return (
+                    <View
+                      key={dia.dataChave}
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: ok
+                          ? colors.semantic.successBg
+                          : parcial
+                            ? colors.semantic.warningBg
+                            : colors.surface.subtle,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }}>
+                        {dia.diaCurto}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '600',
+                          color: ok
+                            ? colors.semantic.success
+                            : parcial
+                              ? colors.semantic.warning
+                              : colors.text.muted,
+                        }}
+                      >
+                        {dia.concluidos}/{dia.total}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </AppCard>
           )}
@@ -1009,6 +1085,12 @@ export default function TelaLembretes({ navigation }: Props) {
               })}
             </View>
           )}
+
+          <PresetRemindersCard
+            area="farmacia"
+            title="Lembretes de Alimentação e Uso Seguro"
+            subtitle="Inclui controle de açúcar/doces após refeições, organizador semanal e segurança medicamentosa."
+          />
         </View>
       ) : (
         <View style={styles.stack}>
@@ -1061,17 +1143,57 @@ export default function TelaLembretes({ navigation }: Props) {
             onPress={handleGerarProntuarioCompleto}
           />
 
-          {medicamentosAtivos.length === 0 ? (
+          {medicamentosAtivos.length > 0 && (
+            <AppCard variant="default">
+              <AppInput
+                label="Buscar no estoque"
+                placeholder="Digite nome do remédio, dosagem ou médico..."
+                value={buscaEstoque}
+                onChangeText={setBuscaEstoque}
+              />
+              <ChipSelector
+                label="Filtrar situação"
+                options={[
+                  { value: 'todos', label: 'Todos' },
+                  { value: 'baixo', label: 'Estoque baixo' },
+                  { value: 'validade', label: 'Vencendo / Vencidos' },
+                ]}
+                selected={filtroEstoque}
+                onSelect={setFiltroEstoque}
+                accentColor={areaAccent.color}
+                accentBg={areaAccent.bg}
+              />
+            </AppCard>
+          )}
+
+          {medicamentosAtivosFiltrados.length === 0 ? (
             <EmptyState
               icon="medkit-outline"
-              title="Nenhum medicamento ativo no estoque"
-              description="Adicione medicamentos para acompanhar estoque, validade, prescrição e armazenamento."
-              actionLabel="Adicionar Medicamento"
-              onAction={handleAbrirNovoMed}
+              title={
+                medicamentosAtivos.length === 0
+                  ? 'Nenhum medicamento ativo no estoque'
+                  : 'Nenhum medicamento encontrado'
+              }
+              description={
+                medicamentosAtivos.length === 0
+                  ? 'Adicione medicamentos para acompanhar estoque, validade, prescrição e armazenamento.'
+                  : 'Tente limpar a busca ou selecionar outro filtro de situação.'
+              }
+              actionLabel={
+                medicamentosAtivos.length === 0 ? 'Adicionar Medicamento' : 'Limpar Filtros'
+              }
+              onAction={() => {
+                if (medicamentosAtivos.length === 0) {
+                  handleAbrirNovoMed();
+                } else {
+                  setBuscaEstoque('');
+                  setFiltroEstoque('todos');
+                }
+              }}
             />
           ) : (
             <View style={styles.listStack}>
-              {medicamentosAtivos.map((item) => {
+              {medicamentosAtivosFiltrados.map((item) => {
                 const estoqueNum = parseInt(item.estoque || '0', 10);
                 const isEstoqueBaixo = !isNaN(estoqueNum) && estoqueNum <= 5;
                 const statusValidade = avaliarValidadeMedicamento(item.validade);

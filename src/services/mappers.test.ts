@@ -22,6 +22,8 @@ import {
   toIsoDate,
   treinoDoDb,
   treinoParaDb,
+  vacinaDoDb,
+  vacinaParaDb,
 } from './mappers';
 
 describe('conversores numéricos e de data (mappers)', () => {
@@ -219,6 +221,24 @@ describe('mapeamento bidirecional UI <-> Banco (Supabase)', () => {
     expect(check).toEqual({
       data: '2026-11-17',
       itensConcluidos: ['higiene_bucal', 'hidratacao'],
+    });
+
+    const vacina = vacinaDoDb(
+      vacinaParaDb(userId, {
+        id: itemUuid,
+        nome: 'Influenza (Gripe)',
+        dataAplicacao: '10/05/2026',
+        proximaDose: '10/05/2027',
+        local: 'UBS Centro',
+      })
+    );
+    expect(vacina).toEqual({
+      id: itemUuid,
+      nome: 'Influenza (Gripe)',
+      dataAplicacao: '10/05/2026',
+      proximaDose: '10/05/2027',
+      local: 'UBS Centro',
+      observacoes: undefined,
     });
   });
 });

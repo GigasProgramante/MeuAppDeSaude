@@ -64,6 +64,9 @@ jest.mock('./db', () => ({
   removerPesoImc: jest.fn(),
   buscarChecklistCuidados: jest.fn(),
   salvarChecklistCuidados: jest.fn(),
+  listarVacinas: jest.fn(),
+  upsertVacina: jest.fn(),
+  removerVacina: jest.fn(),
 }));
 
 import * as db from './db';
@@ -148,6 +151,7 @@ describe('fila offline e sincronização (sync.ts)', () => {
     mockedDb.listarHistoricoDor.mockResolvedValue([]);
     mockedDb.listarHistoricoImc.mockResolvedValue([]);
     mockedDb.buscarChecklistCuidados.mockResolvedValue(null);
+    mockedDb.listarVacinas.mockResolvedValue([]);
 
     const partial = await hydrateCloudSnapshot(userId, { forceConfigured: true });
     expect(partial.perfil?.nome).toBe('Ana');

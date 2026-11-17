@@ -11,6 +11,7 @@ import {
   AppModal,
   ChipSelector,
   EmptyState,
+  PresetRemindersCard,
   ScreenShell,
   SegmentedTabs,
   StatusBadge,
@@ -108,6 +109,7 @@ export default function MoodScreen({ navigation }: Props) {
   const [ciclosConcluidos, setCiclosConcluidos] = useState(0);
   const [groundingMarcados, setGroundingMarcados] = useState<string[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<'todos' | 'humor' | 'avaliacao' | 'sinal'>('todos');
+  const [screeningChartType, setScreeningChartType] = useState<'PHQ-9' | 'GAD-7'>('PHQ-9');
 
   const [activeQuiz, setActiveQuiz] = useState<TipoQuestionario | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -298,6 +300,25 @@ export default function MoodScreen({ navigation }: Props) {
     });
   }, [humorHistorico]);
 
+  const screeningChartData: ChartPoint[] = useMemo(() => {
+    return (avaliacoesPsicologia || [])
+      .filter((a) => a.tipo === screeningChartType)
+      .slice()
+      .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime())
+      .slice(-7)
+      .map((a) => ({
+        label: new Date(a.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        value: a.pontuacao,
+        displayValue: `${a.pontuacao}`,
+        color:
+          a.pontuacao <= 4
+            ? colors.semantic.success
+            : a.pontuacao <= 9
+              ? colors.semantic.warning
+              : colors.semantic.danger,
+      }));
+  }, [avaliacoesPsicologia, screeningChartType]);
+
   const mergedHistory = [
     ...(humorHistorico || []).map((h) => ({ type: 'humor' as const, data: h.data, item: h })),
     ...(avaliacoesPsicologia || []).map((a) => ({ type: 'avaliacao' as const, data: a.data, item: a })),
@@ -480,6 +501,40 @@ export default function MoodScreen({ navigation }: Props) {
           subtitle="Quantas vezes cada estado emocional foi registrado nos últimos 7 dias."
           data={moodFrequencyData}
           emptyMessage="Registre seu humor durante os últimos 7 dias para acompanhar a distribuição emocional."
+        />
+
+        <BarChartCard
+          title={`Evolução dos Escores ${screeningChartType}`}
+          subtitle={
+            screeningChartType === 'PHQ-9'
+              ? 'Histórico de pontuações PHQ-9 (0–27 pts · menor pontuação indica melhor bem-estar).'
+              : 'Histórico de pontuações GAD-7 (0–21 pts · menor pontuação indica menor ansiedade).'
+          }
+          maxScale={screeningChartType === 'PHQ-9' ? 27 : 21}
+          data={screeningChartData}
+          emptyMessage={`Conclua ao menos uma triagem ${screeningChartType} acima para acompanhar sua curva de evolução.`}
+          legend={[
+            { label: 'Mínimo (0–4)', color: colors.semantic.success },
+            { label: 'Leve (5–9)', color: colors.semantic.warning },
+            { label: 'Moderado/Alerta (>=10)', color: colors.semantic.danger },
+          ]}
+        >
+          <ChipSelector
+            options={[
+              { value: 'PHQ-9', label: 'PHQ-9 (Depressão)' },
+              { value: 'GAD-7', label: 'GAD-7 (Ansiedade)' },
+            ]}
+            selected={screeningChartType}
+            onSelect={setScreeningChartType}
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+        </BarChartCard>
+
+        <PresetRemindersCard
+          area="psicologia"
+          title="Lembretes de Sono Saudável e Bem-Estar"
+          subtitle="Rotinas simples para cuidar do sono e do humor todos os dias."
         />
 
         <AppCard variant="default">

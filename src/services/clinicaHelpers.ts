@@ -447,3 +447,65 @@ export function formatarMascaraMesAno(texto: string): string {
   if (digitos.length <= 2) return digitos;
   return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
 }
+
+export function formatarMascaraDataBr(texto: string): string {
+  const digitos = texto.replace(/\D/g, '').slice(0, 8);
+  if (digitos.length <= 2) return digitos;
+  if (digitos.length <= 4) return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+  return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+}
+
+export interface AdesaoDia {
+  dataChave: string;
+  diaCurto: string;
+  concluidos: number;
+  total: number;
+}
+
+export interface ResumoAdesaoSemanal {
+  dias: AdesaoDia[];
+  totalConfirmacoes: number;
+  totalPossivel: number;
+  percentual: number;
+}
+
+const DIAS_CURTOS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+export function calcularAdesaoSemanalLembretes(
+  lembretes: Lembrete[],
+  referencia: Date = new Date()
+): ResumoAdesaoSemanal {
+  const remedios = lembretes.filter((l) => l.tipo === 'remedio');
+  const alvo = remedios.length > 0 ? remedios : lembretes;
+  const dias: AdesaoDia[] = [];
+  let totalConfirmacoes = 0;
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const d = new Date(referencia.getFullYear(), referencia.getMonth(), referencia.getDate() - offset);
+    const key = getHojeLocalKey(d);
+    let concluidos = 0;
+    for (const item of alvo) {
+      if (item.dosesTomadasPorData?.[key]) {
+        concluidos += 1;
+      }
+    }
+    totalConfirmacoes += concluidos;
+    dias.push({
+      dataChave: key,
+      diaCurto: DIAS_CURTOS_PT[d.getDay()],
+      concluidos,
+      total: alvo.length,
+    });
+  }
+
+  const totalPossivel = alvo.length * 7;
+  const percentual =
+    totalPossivel > 0 ? Math.min(100, Math.round((totalConfirmacoes / totalPossivel) * 100)) : 0;
+
+  return {
+    dias,
+    totalConfirmacoes,
+    totalPossivel,
+    percentual,
+  };
+}

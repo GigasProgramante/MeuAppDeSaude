@@ -9,6 +9,7 @@ import {
   PesoImcRegistro,
   RegistroDor,
   SinalVital,
+  VacinaRegistro,
 } from '../types';
 import { calcularEClassificarImc } from './clinicaHelpers';
 
@@ -20,6 +21,7 @@ export interface DadosProntuario {
   avaliacoesPsicologia: AvaliacaoPsicologica[];
   historicoDor: RegistroDor[];
   historicoImc?: PesoImcRegistro[];
+  vacinas?: VacinaRegistro[];
   geradoEm?: Date;
 }
 
@@ -58,6 +60,7 @@ export function gerarHtmlProntuario(dados: DadosProntuario): string {
     humorHistorico,
     avaliacoesPsicologia,
     historicoDor,
+    vacinas = [],
     geradoEm = new Date(),
   } = dados;
 
@@ -136,6 +139,7 @@ export function gerarHtmlProntuario(dados: DadosProntuario): string {
           <td>${glic}</td>
           <td>${s.oxigenacao?.trim() ? `${escapeHtml(s.oxigenacao)}%` : '—'}</td>
           <td>${s.temperatura?.trim() ? `${escapeHtml(s.temperatura)} °C` : '—'}</td>
+          <td>${s.contexto?.trim() ? escapeHtml(s.contexto) : '—'}</td>
         </tr>
       `;
     })
@@ -153,6 +157,7 @@ export function gerarHtmlProntuario(dados: DadosProntuario): string {
                <th>Glicemia</th>
                <th>SpO₂</th>
                <th>Temperatura</th>
+               <th>Contexto</th>
              </tr>
            </thead>
            <tbody>${linhasSinais}</tbody>
@@ -274,6 +279,22 @@ export function gerarHtmlProntuario(dados: DadosProntuario): string {
                   .map((h) => `${escapeHtml(MOOD_LABELS[h.moodId] || h.moodId)} (${new Date(h.data).toLocaleDateString('pt-BR')})`)
                   .join(' · ')}</p>`
               : ''
+          }
+        </div>
+
+        <div class="secao">
+          <h2>6. Carteirinha de Vacinas</h2>
+          ${
+            vacinas.length === 0
+              ? '<p class="vazio">Nenhuma vacina registrada.</p>'
+              : `<ul>${vacinas
+                  .map(
+                    (v) =>
+                      `<li><strong>${escapeHtml(v.nome)}:</strong> aplicada em ${escapeHtml(v.dataAplicacao)}${
+                        v.proximaDose ? ` · Próx. dose: ${escapeHtml(v.proximaDose)}` : ''
+                      }${v.local ? ` (${escapeHtml(v.local)})` : ''}</li>`
+                  )
+                  .join('')}</ul>`
           }
         </div>
 

@@ -14,6 +14,8 @@ import {
   useFeedback,
 } from '../../components/ui';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import { exportarProntuarioPdf } from '../../services/prontuarioPdf';
+import { useStore } from '../../store/useStore';
 import { colors, spacing } from '../../theme/tokens';
 import {
   CAMPI_UNC,
@@ -44,6 +46,14 @@ const MODAL_TABS: { key: ModalTab; label: string; icon: keyof typeof Ionicons.gl
   { key: 'gps', label: 'GPS & Campi', icon: 'location-outline' },
 ];
 
+const CHECKLIST_CONSULTA_UNC = [
+  { id: 'doc', titulo: 'RG e CPF ou CNH', detalhe: 'Documento oficial com foto.' },
+  { id: 'sus', titulo: 'Cartão Nacional do SUS e comprovante de residência', detalhe: 'Necessários para triagens gratuitas e encaminhamentos.' },
+  { id: 'receitas', titulo: 'Receitas e caixas dos remédios em uso', detalhe: 'Ajuda a evitar interações e confirmar dosagens.' },
+  { id: 'exames', titulo: 'Exames recentes e encaminhamento médico/UBS', detalhe: 'Quando houver solicitação prévia.' },
+  { id: 'prontuario', titulo: 'Resumo clínico do aplicativo (PDF)', detalhe: 'Contém suas alergias, vitais, dor e medicações.' },
+];
+
 function calcularDistanciaKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371;
@@ -58,6 +68,15 @@ function calcularDistanciaKm(lat1: number, lon1: number, lat2: number, lon2: num
 
 export default function TelaSobreUNC({ navigation }: Props) {
   const { showAlert } = useFeedback();
+  const perfil = useStore((s) => s.perfil);
+  const medicamentos = useStore((s) => s.medicamentos || []);
+  const sinaisVitais = useStore((s) => s.sinaisVitais || []);
+  const humorHistorico = useStore((s) => s.humorHistorico || []);
+  const avaliacoesPsicologia = useStore((s) => s.avaliacoesPsicologia || []);
+  const historicoDor = useStore((s) => s.historicoDor || []);
+  const vacinas = useStore((s) => s.vacinas || []);
+
+  const [itensConsulta, setItensConsulta] = useState<string[]>([]);
   const [selectedInfo, setSelectedInfo] = useState<ServicoCursoInfo | null>(null);
   const [modalTab, setModalTab] = useState<ModalTab>('servicos');
   const [selectedCampusMap, setSelectedCampusMap] = useState<CampusUNC | null>(null);
@@ -358,6 +377,82 @@ export default function TelaSobreUNC({ navigation }: Props) {
       </AppCard>
 
       <View style={styles.impactStack}>
+        <AppCard variant="elevated">
+          <View style={styles.clinicHeaderRow}>
+            <Text style={styles.clinicTitle}>O que levar na consulta (SUS / UNC)</Text>
+            <StatusBadge
+              label={`${itensConsulta.length}/${CHECKLIST_CONSULTA_UNC.length}`}
+              tone={itensConsulta.length === CHECKLIST_CONSULTA_UNC.length ? 'success' : 'info'}
+            />
+          </View>
+          <Text style={styles.clinicSub}>
+            Conferir esta lista antes de sair evita viagens perdidas na triagem e agiliza seu atendimento.
+          </Text>
+          <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
+            {CHECKLIST_CONSULTA_UNC.map((item) => {
+              const marcado = itensConsulta.includes(item.id);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() =>
+                    setItensConsulta((prev) =>
+                      prev.includes(item.id)
+                        ? prev.filter((x) => x !== item.id)
+                        : [...prev, item.id]
+                    )
+                  }
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: spacing.sm,
+                    padding: spacing.sm,
+                    borderRadius: 10,
+                    backgroundColor: marcado ? colors.semantic.successBg : colors.surface.subtle,
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={marcado ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={marcado ? colors.semantic.success : colors.text.secondary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.bodyText,
+                        { fontWeight: '700', color: colors.text.primary },
+                      ]}
+                    >
+                      {item.titulo}
+                    </Text>
+                    <Text style={styles.gpsStatusText}>{item.detalhe}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <AppButton
+            title="Gerar Prontuário PDF do App para Consulta"
+            icon="document-text-outline"
+            variant="secondary"
+            onPress={async () => {
+              try {
+                await exportarProntuarioPdf({
+                  perfil,
+                  medicamentos,
+                  sinaisVitais,
+                  humorHistorico,
+                  avaliacoesPsicologia,
+                  historicoDor,
+                  vacinas,
+                });
+              } catch {
+                showAlert('Erro', 'Não foi possível gerar o PDF do prontuário.');
+              }
+            }}
+          />
+        </AppCard>
+
         <AppCard variant="alert" tone="success">
           <View style={styles.impactRow}>
             <Ionicons name="heart-half-outline" size={24} color={colors.semantic.success} />

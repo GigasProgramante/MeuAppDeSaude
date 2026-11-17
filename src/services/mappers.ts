@@ -15,6 +15,7 @@ import {
   SinalVital,
   TipoDor,
   Treino,
+  VacinaRegistro,
 } from '../types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -94,11 +95,22 @@ export function perfilParaDb(userId: string, perfil: Partial<PerfilUsuario>): Re
   if (perfil.imc !== undefined) row.imc = parseNumeroPtBr(perfil.imc);
   if (perfil.comorbidades !== undefined) row.comorbidades = perfil.comorbidades;
   if (perfil.alergias !== undefined) row.alergias = perfil.alergias || null;
+  if (perfil.aguaPorData !== undefined) row.agua_por_data = perfil.aguaPorData;
   if (perfil.termosAceitosEm !== undefined) {
     row.termos_aceitos_em = perfil.termosAceitosEm ? toIsoDate(perfil.termosAceitosEm) : null;
   }
 
   return row;
+}
+
+function parseMapaNumerico(raw: unknown): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const num = parseInteiro(v as number | string | null | undefined);
+    if (num !== null && num >= 0) out[k] = num;
+  }
+  return out;
 }
 
 export function perfilDoDb(row: Record<string, unknown> | null): PerfilUsuario | null {
@@ -118,6 +130,7 @@ export function perfilDoDb(row: Record<string, unknown> | null): PerfilUsuario |
       ? row.comorbidades.filter((c): c is string => typeof c === 'string')
       : undefined,
     alergias: typeof row.alergias === 'string' ? row.alergias : undefined,
+    aguaPorData: parseMapaNumerico(row.agua_por_data),
     termosAceitosEm:
       typeof row.termos_aceitos_em === 'string' ? toIsoDate(row.termos_aceitos_em) : undefined,
   };
@@ -297,6 +310,7 @@ export function sinalVitalParaDb(userId: string, sinal: SinalVital): Record<stri
     temperatura: sinal.temperatura ?? null,
     humor: sinal.humor ?? null,
     exercicio: sinal.exercicio ?? null,
+    contexto: sinal.contexto ?? null,
     data: toIsoDate(sinal.data),
   };
   if (isUuidValido(sinal.id)) row.id = sinal.id;
@@ -314,6 +328,7 @@ export function sinalVitalDoDb(row: Record<string, unknown>): SinalVital {
     temperatura: typeof row.temperatura === 'string' ? row.temperatura : undefined,
     humor: typeof row.humor === 'string' ? row.humor : undefined,
     exercicio: typeof row.exercicio === 'boolean' ? row.exercicio : undefined,
+    contexto: typeof row.contexto === 'string' ? row.contexto : undefined,
     data: toIsoDate(row.data as string | undefined),
   };
 }
@@ -468,5 +483,29 @@ export function checklistDoDb(row: Record<string, unknown> | null): ChecklistCui
     itensConcluidos: Array.isArray(row.itens_concluidos)
       ? row.itens_concluidos.filter((item): item is string => typeof item === 'string')
       : [],
+  };
+}
+
+export function vacinaParaDb(userId: string, vacina: VacinaRegistro): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    nome: vacina.nome,
+    data_aplicacao: vacina.dataAplicacao,
+    proxima_dose: vacina.proximaDose ?? null,
+    local: vacina.local ?? null,
+    observacoes: vacina.observacoes ?? null,
+  };
+  if (isUuidValido(vacina.id)) row.id = vacina.id;
+  return row;
+}
+
+export function vacinaDoDb(row: Record<string, unknown>): VacinaRegistro {
+  return {
+    id: String(row.id),
+    nome: typeof row.nome === 'string' ? row.nome : '',
+    dataAplicacao: typeof row.data_aplicacao === 'string' ? row.data_aplicacao : '',
+    proximaDose: typeof row.proxima_dose === 'string' ? row.proxima_dose : undefined,
+    local: typeof row.local === 'string' ? row.local : undefined,
+    observacoes: typeof row.observacoes === 'string' ? row.observacoes : undefined,
   };
 }

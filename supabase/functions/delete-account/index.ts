@@ -11,6 +11,7 @@ const corsHeaders = {
 };
 
 const USER_TABLES = [
+  'vacinas',
   'checklist_cuidados',
   'historico_imc',
   'historico_dor',

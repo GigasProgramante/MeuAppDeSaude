@@ -10,6 +10,7 @@ import {
   RegistroDor,
   SinalVital,
   Treino,
+  VacinaRegistro,
 } from '../types';
 import * as db from './db';
 import { getHojeLocalKey } from './mappers';
@@ -27,7 +28,8 @@ export type SyncEntity =
   | 'treino'
   | 'registroDor'
   | 'pesoImc'
-  | 'checklist';
+  | 'checklist'
+  | 'vacina';
 
 export type SyncAction = 'upsert' | 'delete';
 
@@ -50,6 +52,7 @@ export interface SnapshotClinico {
   treinos: Treino[];
   historicoDor: RegistroDor[];
   historicoImc: PesoImcRegistro[];
+  vacinas: VacinaRegistro[];
 }
 
 export const EMPTY_SNAPSHOT: SnapshotClinico = {
@@ -63,6 +66,7 @@ export const EMPTY_SNAPSHOT: SnapshotClinico = {
   treinos: [],
   historicoDor: [],
   historicoImc: [],
+  vacinas: [],
 };
 
 export const GUEST_CONTEXT_KEY = 'guest';
@@ -187,6 +191,13 @@ async function executeSyncOp(userId: string, item: SyncQueueItem): Promise<void>
         await db.salvarChecklistCuidados(userId, item.payload as ChecklistCuidadoDiario);
       }
       return;
+    case 'vacina':
+      if (item.action === 'delete') {
+        await db.removerVacina(userId, item.recordId);
+      } else if (item.payload) {
+        await db.upsertVacina(userId, item.payload as VacinaRegistro);
+      }
+      return;
   }
 }
 
@@ -299,6 +310,7 @@ export async function hydrateCloudSnapshot(
     dorRes,
     imcRes,
     checklistRes,
+    vacinasRes,
   ] = await Promise.allSettled([
     db.buscarPerfil(userId),
     db.listarLembretes(userId),
@@ -310,6 +322,7 @@ export async function hydrateCloudSnapshot(
     db.listarHistoricoDor(userId),
     db.listarHistoricoImc(userId),
     db.buscarChecklistCuidados(userId, hojeKey),
+    db.listarVacinas(userId),
   ]);
 
   const partial: Partial<SnapshotClinico> = {};
@@ -325,6 +338,7 @@ export async function hydrateCloudSnapshot(
   if (checklistRes.status === 'fulfilled' && checklistRes.value) {
     partial.checklistCuidados = checklistRes.value;
   }
+  if (vacinasRes.status === 'fulfilled') partial.vacinas = vacinasRes.value;
 
   return partial;
 }

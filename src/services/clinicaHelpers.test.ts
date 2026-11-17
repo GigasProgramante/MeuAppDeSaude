@@ -1,10 +1,12 @@
 import {
   VITALS_LIMITS,
   avaliarValidadeMedicamento,
+  calcularAdesaoSemanalLembretes,
   calcularAlternanciaDoseNaData,
   calcularEClassificarImc,
   contarTreinosSemanaCorrente,
   filtrarExerciciosPorComorbidades,
+  formatarMascaraDataBr,
   formatarMascaraHora,
   formatarMascaraMesAno,
   isLembreteConcluidoNaData,
@@ -140,9 +142,37 @@ describe('controle diário de lembretes e baixa única de estoque (PROB-07)', ()
     expect(diab.exercicios.some((e) => e.id === 'caminhada-pos-refeicao')).toBe(true);
   });
 
-  it('aplica máscaras HH:MM e MM/AAAA corretamente', () => {
+  it('aplica máscaras HH:MM, MM/AAAA e DD/MM/AAAA corretamente', () => {
     expect(formatarMascaraHora('0830')).toBe('08:30');
     expect(formatarMascaraHora('145')).toBe('14:5');
     expect(formatarMascaraMesAno('122028')).toBe('12/2028');
+    expect(formatarMascaraDataBr('17112026')).toBe('17/11/2026');
+  });
+
+  it('calcula adesão semanal dos últimos 7 dias para remédios', () => {
+    const ref = new Date(2026, 10, 17, 12, 0);
+    const resumo = calcularAdesaoSemanalLembretes(
+      [
+        {
+          id: 'r1',
+          tipo: 'remedio',
+          nomeRemedio: 'Losartana',
+          horario: '08:00',
+          frequencia: '1x ao dia',
+          concluido: false,
+          dosesTomadasPorData: {
+            '2026-11-17': true,
+            '2026-11-16': true,
+            '2026-11-15': true,
+          },
+        },
+      ],
+      ref
+    );
+
+    expect(resumo.dias).toHaveLength(7);
+    expect(resumo.totalConfirmacoes).toBe(3);
+    expect(resumo.totalPossivel).toBe(7);
+    expect(resumo.percentual).toBe(43);
   });
 });

@@ -45,6 +45,15 @@ describe('prontuarioPdf', () => {
           bpm: '72',
           glicose: '105',
           glicoseTipo: 'Jejum',
+          contexto: 'Em repouso (5 min)',
+        },
+      ],
+      vacinas: [
+        {
+          id: 'v1',
+          nome: 'Influenza (Gripe)',
+          dataAplicacao: '10/05/2026',
+          proximaDose: '10/05/2027',
         },
       ],
       humorHistorico: [
@@ -95,6 +104,8 @@ describe('prontuarioPdf', () => {
     expect(html).toContain('GAD-7');
     expect(html).toContain('7/21 pts');
     expect(html).toContain('Feliz');
+    expect(html).toContain('Em repouso (5 min)');
+    expect(html).toContain('Influenza (Gripe)');
   });
 
   it('funciona com dados vazios sem quebrar', () => {

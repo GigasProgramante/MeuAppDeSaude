@@ -6,16 +6,22 @@ import { BarChartCard, ChartPoint } from '../../components/ClinicaCharts';
 import {
   AppButton,
   AppCard,
+  AppInput,
   AppModal,
   ChipSelector,
   EmptyState,
+  PresetRemindersCard,
   ScreenShell,
   StatusBadge,
   StepperInput,
   useFeedback,
 } from '../../components/ui';
 import { RootStackParamList } from '../../navigation/AppNavigator';
-import { VITALS_LIMITS, obterFaixaGlicose } from '../../services/clinicaHelpers';
+import {
+  VITALS_LIMITS,
+  formatarMascaraDataBr,
+  obterFaixaGlicose,
+} from '../../services/clinicaHelpers';
 import {
   NOTIFICATION_CHANNELS,
   initializeNotifications,
@@ -35,6 +41,21 @@ interface Props {
 
 const BASIC_MOODS = ['Bem', 'Neutro', 'Mal'];
 const GLICOSE_TIPOS = ['Jejum', 'Pré-prandial', 'Pós-prandial'] as const;
+const CONTEXTOS_AFERICAO = [
+  'Em repouso (5 min)',
+  'Sentado(a)',
+  'Deitado(a)',
+  'Após esforço leve',
+  'Com tontura ou dor',
+];
+const VACINAS_SUGERIDAS = [
+  'Influenza (Gripe)',
+  'COVID-19',
+  'Pneumocócica',
+  'Tétano / dT',
+  'Herpes Zóster',
+  'Hepatite B',
+];
 
 const CHECKLIST_CUIDADOS_ITENS = [
   { id: 'higiene_bucal', titulo: 'Higiene bucal e corporal', desc: 'Escovação dentária, banho assistido e limpeza da pele.' },
@@ -59,9 +80,16 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   const [temperatura, setTemperatura] = useState('');
   const [humor, setHumor] = useState<string | null>(null);
   const [exercicio, setExercicio] = useState<boolean | null>(null);
+  const [contextoSelecionado, setContextoSelecionado] = useState<string[]>([]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checklistModalVisible, setChecklistModalVisible] = useState(false);
+  const [guiaMedicaoVisible, setGuiaMedicaoVisible] = useState(false);
+  const [vacinaModalVisible, setVacinaModalVisible] = useState(false);
+  const [vacinaNome, setVacinaNome] = useState('');
+  const [vacinaData, setVacinaData] = useState('');
+  const [vacinaProxima, setVacinaProxima] = useState('');
+  const [vacinaLocal, setVacinaLocal] = useState('');
   const [chartMetric, setChartMetric] = useState<
     'bpm' | 'glicose' | 'pressao' | 'oxigenacao' | 'temperatura'
   >('bpm');
@@ -73,6 +101,9 @@ export default function TelaSinaisVitais({ navigation }: Props) {
   const updateSinalVital = useStore((state) => state.updateSinalVital);
   const removeSinalVital = useStore((state) => state.removeSinalVital);
   const historico = useStore((state) => state.sinaisVitais || []);
+  const vacinas = useStore((state) => state.vacinas || []);
+  const addVacina = useStore((state) => state.addVacina);
+  const removeVacina = useStore((state) => state.removeVacina);
   const checklistCuidados = useStore((state) => state.checklistCuidados);
   const setChecklistCuidados = useStore((state) => state.setChecklistCuidados);
 
@@ -274,6 +305,7 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     setTemperatura('');
     setHumor(null);
     setExercicio(null);
+    setContextoSelecionado([]);
     setEditingId(null);
   };
 
@@ -296,6 +328,14 @@ export default function TelaSinaisVitais({ navigation }: Props) {
     setTemperatura(registro.temperatura || '');
     setHumor(registro.humor || null);
     setExercicio(registro.exercicio !== undefined ? registro.exercicio : null);
+    setContextoSelecionado(
+      registro.contexto
+        ? registro.contexto
+            .split(' · ')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []
+    );
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
@@ -467,6 +507,8 @@ export default function TelaSinaisVitais({ navigation }: Props) {
         temperatura: tempClean ? tempNum.toFixed(1) : undefined,
         humor: humor !== null ? humor : undefined,
         exercicio: exercicio !== null ? exercicio : undefined,
+        contexto:
+          contextoSelecionado.length > 0 ? contextoSelecionado.join(' · ') : undefined,
       };
 
       const estavaEditando = editingId !== null;
@@ -736,6 +778,13 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               <Ionicons name="pulse-outline" size={20} color={areaAccent.color} />
               <Text style={styles.sectionTitle}>Nova Aferição de Sinais Vitais</Text>
             </View>
+            <AppButton
+              title="Como medir"
+              icon="help-circle-outline"
+              variant="outline"
+              compact
+              onPress={() => setGuiaMedicaoVisible(true)}
+            />
           </View>
 
           <StepperInput
@@ -852,6 +901,20 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             accentBg={areaAccent.bg}
           />
 
+          <ChipSelector
+            label="Contexto da medição (opcional)"
+            options={CONTEXTOS_AFERICAO}
+            selected={contextoSelecionado}
+            multiple
+            onSelect={(item) =>
+              setContextoSelecionado((prev) =>
+                prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]
+              )
+            }
+            accentColor={areaAccent.color}
+            accentBg={areaAccent.bg}
+          />
+
           <AppButton
             title={editingId ? 'Salvar Alterações' : 'Salvar Sinais Vitais'}
             icon="checkmark-circle-outline"
@@ -895,6 +958,81 @@ export default function TelaSinaisVitais({ navigation }: Props) {
             onPress={() => setChecklistModalVisible(true)}
           />
         </AppCard>
+
+        <AppCard variant="default">
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="bandage-outline" size={20} color={colors.brand.teal} />
+              <Text style={styles.sectionTitle}>Mini Carteirinha de Vacinas</Text>
+            </View>
+            <StatusBadge
+              label={`${vacinas.length} registrada(s)`}
+              tone={vacinas.length > 0 ? 'success' : 'neutral'}
+            />
+          </View>
+          <Text style={styles.sectionSub}>
+            Acompanhe vacinas importantes (Gripe, COVID-19, Pneumocócica, Tétano e outras).
+          </Text>
+          {vacinas.length > 0 ? (
+            <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
+              {vacinas.map((v) => (
+                <View
+                  key={v.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: spacing.sm,
+                    backgroundColor: colors.surface.subtle,
+                    padding: spacing.sm,
+                    borderRadius: 10,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 15, color: colors.text.primary }}>
+                      {v.nome}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.text.secondary }}>
+                      Aplicada: {v.dataAplicacao}
+                      {v.proximaDose ? ` · Próx. dose: ${v.proximaDose}` : ''}
+                      {v.local ? ` · ${v.local}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.iconActionBtn}
+                    onPress={() =>
+                      confirm({
+                        title: 'Remover Vacina',
+                        message: `Deseja excluir "${v.nome}" da carteirinha?`,
+                        confirmText: 'Excluir',
+                        destructive: true,
+                        onConfirm: () => {
+                          removeVacina(v.id);
+                          showToast('Vacina removida.', 'info');
+                        },
+                      })
+                    }
+                    accessibilityLabel={`Remover vacina ${v.nome}`}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.semantic.danger} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <AppButton
+            title="Adicionar Vacina"
+            icon="add-circle-outline"
+            variant="outline"
+            onPress={() => setVacinaModalVisible(true)}
+          />
+        </AppCard>
+
+        <PresetRemindersCard
+          area="enfermagem"
+          title="Lembretes de Enfermagem e Aferição"
+          subtitle="Rotinas para aferir pressão em repouso, glicemia e checar cuidados."
+        />
 
         <BarChartCard
           title="Evolução dos Sinais Vitais"
@@ -1001,9 +1139,10 @@ export default function TelaSinaisVitais({ navigation }: Props) {
                             <Text style={styles.valueText}>{h.temperatura} °C</Text>
                           </View>
                         ) : null}
-                        {(h.humor || h.exercicio !== undefined) && (
+                        {(h.humor || h.exercicio !== undefined || h.contexto) && (
                           <Text style={{ fontSize: 13, color: colors.text.secondary, marginTop: 2 }}>
                             {[
+                              h.contexto ? `Contexto: ${h.contexto}` : '',
                               h.humor ? `Estado: ${h.humor}` : '',
                               h.exercicio !== undefined
                                 ? `Exercício: ${h.exercicio ? 'Sim' : 'Não'}`
@@ -1083,6 +1222,119 @@ export default function TelaSinaisVitais({ navigation }: Props) {
               </Text>
             </AppCard>
           )}
+        </View>
+      </AppModal>
+
+      <AppModal
+        visible={guiaMedicaoVisible}
+        title="Como Medir Corretamente em Casa"
+        subtitle="Orientações simples para evitar leituras alteradas."
+        onClose={() => setGuiaMedicaoVisible(false)}
+        footer={
+          <AppButton
+            title="Entendi"
+            variant="primary"
+            onPress={() => setGuiaMedicaoVisible(false)}
+          />
+        }
+      >
+        <View style={{ gap: spacing.md }}>
+          <AppCard variant="outlined">
+            <Text style={styles.sectionTitle}>Pressão Arterial</Text>
+            <Text style={styles.checklistDesc}>
+              1. Descanse sentado(a) por pelo menos 5 minutos antes de medir.{'\n'}
+              2. Apoie as costas na cadeira, mantenha os pés no chão e não cruze as pernas.{'\n'}
+              3. Apoie o braço na altura do coração com a palma voltada para cima.{'\n'}
+              4. Evite café, chimarrão, exercício ou cigarro nos 30 minutos anteriores e esvazie a bexiga antes.
+            </Text>
+          </AppCard>
+          <AppCard variant="outlined">
+            <Text style={styles.sectionTitle}>Glicemia Capilar (Ponta de Dedo)</Text>
+            <Text style={styles.checklistDesc}>
+              1. Lave bem as mãos com água e sabão e seque completamente (álcool em excesso ou restos de fruta alteram o resultado).{'\n'}
+              2. Faça a punção na lateral da ponta do dedo, onde dói menos.{'\n'}
+              3. Selecione corretamente se está em Jejum, Pré-prandial ou Pós-prandial.
+            </Text>
+          </AppCard>
+        </View>
+      </AppModal>
+
+      <AppModal
+        visible={vacinaModalVisible}
+        title="Registrar Vacina"
+        subtitle="Mantenha sua carteirinha sempre fácil para consultas."
+        onClose={() => setVacinaModalVisible(false)}
+        footer={
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <AppButton
+              title="Cancelar"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => setVacinaModalVisible(false)}
+            />
+            <AppButton
+              title="Salvar Vacina"
+              variant="primary"
+              style={{ flex: 1 }}
+              onPress={() => {
+                if (!vacinaNome.trim() || !vacinaData.trim()) {
+                  showAlert('Atenção', 'Informe o nome da vacina e a data da aplicação.');
+                  return;
+                }
+                addVacina({
+                  nome: vacinaNome.trim(),
+                  dataAplicacao: vacinaData.trim(),
+                  proximaDose: vacinaProxima.trim() || undefined,
+                  local: vacinaLocal.trim() || undefined,
+                });
+                setVacinaNome('');
+                setVacinaData('');
+                setVacinaProxima('');
+                setVacinaLocal('');
+                setVacinaModalVisible(false);
+                showToast('Vacina adicionada à carteirinha!', 'success');
+              }}
+            />
+          </View>
+        }
+      >
+        <View>
+          <ChipSelector
+            label="Vacinas comuns (toque para preencher)"
+            options={VACINAS_SUGERIDAS}
+            selected={vacinaNome}
+            onSelect={setVacinaNome}
+            accentColor={colors.brand.teal}
+            accentBg={colors.brand.tealSoft}
+          />
+          <AppInput
+            label="Nome da vacina *"
+            placeholder="Ex: Influenza (Gripe)"
+            value={vacinaNome}
+            onChangeText={setVacinaNome}
+          />
+          <AppInput
+            label="Data da aplicação (DD/MM/AAAA) *"
+            placeholder="Ex: 17/11/2026"
+            value={vacinaData}
+            onChangeText={(t) => setVacinaData(formatarMascaraDataBr(t))}
+            keyboardType="numeric"
+            maxLength={10}
+          />
+          <AppInput
+            label="Próxima dose / reforço (opcional)"
+            placeholder="Ex: 17/11/2027"
+            value={vacinaProxima}
+            onChangeText={(t) => setVacinaProxima(formatarMascaraDataBr(t))}
+            keyboardType="numeric"
+            maxLength={10}
+          />
+          <AppInput
+            label="Unidade / Local (opcional)"
+            placeholder="Ex: UBS Centro"
+            value={vacinaLocal}
+            onChangeText={setVacinaLocal}
+          />
         </View>
       </AppModal>
     </ScreenShell>

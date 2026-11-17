@@ -14,6 +14,7 @@ import {
   RegistroDor,
   SinalVital,
   Treino,
+  VacinaRegistro,
 } from '../types';
 import { isUuidValido } from '../services/mappers';
 import {
@@ -57,6 +58,7 @@ function extrairSnapshot(state: SnapshotClinico): SnapshotClinico {
     treinos: state.treinos,
     historicoDor: state.historicoDor,
     historicoImc: state.historicoImc,
+    vacinas: state.vacinas,
   };
 }
 
@@ -78,6 +80,7 @@ function normalizarIdsSnapshot(raw: Partial<SnapshotClinico> | null | undefined)
     treinos: ensureUuid(safe.treinos),
     historicoDor: ensureUuid(safe.historicoDor),
     historicoImc: ensureUuid(safe.historicoImc),
+    vacinas: ensureUuid(safe.vacinas),
   };
 }
 
@@ -145,8 +148,13 @@ export interface EstadoGlobal extends SnapshotClinico {
   historicoImc: PesoImcRegistro[];
   addRegistroPesoImc: (registro: Omit<PesoImcRegistro, 'id' | 'data'>) => string;
 
+  vacinas: VacinaRegistro[];
+  addVacina: (vacina: Omit<VacinaRegistro, 'id'>) => string;
+  removeVacina: (id: string) => void;
+
   perfil: PerfilUsuario | null;
   updatePerfil: (perfil: Partial<PerfilUsuario>) => void;
+  setCoposAguaNaData: (dataChave: string, copos: number) => void;
   logout: () => Promise<void>;
 }
 
@@ -282,6 +290,7 @@ export const useStore = create<EstadoGlobal>()((set, get) => {
           pendingByEntity.has('checklist') && state.checklistCuidados
             ? state.checklistCuidados
             : (cloudPartial.checklistCuidados ?? state.checklistCuidados),
+        vacinas: mergeArray(state.vacinas, cloudPartial.vacinas, 'vacina'),
       }));
 
       persistirAtual();
@@ -314,6 +323,22 @@ export const useStore = create<EstadoGlobal>()((set, get) => {
           ? { ...state.perfil, ...novosDados }
           : ({ nome: '', fotoUri: null, telefone: '', ...novosDados } as PerfilUsuario);
         return { perfil: nextPerfil };
+      });
+      persistirAtual();
+      const updated = get().perfil;
+      if (updated) {
+        dispararSync('perfil', 'upsert', get().activeContextKey, updated);
+      }
+    },
+
+    setCoposAguaNaData: (dataChave, copos) => {
+      const safeCopos = Math.max(0, Math.round(copos));
+      set((state) => {
+        const base: PerfilUsuario = state.perfil
+          ? { ...state.perfil }
+          : { nome: '', fotoUri: null, telefone: '' };
+        const nextAgua = { ...(base.aguaPorData || {}), [dataChave]: safeCopos };
+        return { perfil: { ...base, aguaPorData: nextAgua } };
       });
       persistirAtual();
       const updated = get().perfil;
@@ -521,6 +546,24 @@ export const useStore = create<EstadoGlobal>()((set, get) => {
       persistirAtual();
       dispararSync('pesoImc', 'upsert', novo.id, novo);
       return novo.id;
+    },
+
+    addVacina: (vacina) => {
+      const novo: VacinaRegistro = { ...vacina, id: gerarIdUuid() };
+      set((state) => ({
+        vacinas: [...(state.vacinas || []), novo],
+      }));
+      persistirAtual();
+      dispararSync('vacina', 'upsert', novo.id, novo);
+      return novo.id;
+    },
+
+    removeVacina: (id) => {
+      set((state) => ({
+        vacinas: (state.vacinas || []).filter((item) => item.id !== id),
+      }));
+      persistirAtual();
+      dispararSync('vacina', 'delete', id);
     },
   };
 });
